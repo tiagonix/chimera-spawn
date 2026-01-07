@@ -4,7 +4,29 @@ A modern systemd-nspawn container orchestration system providing LXD-like usabil
 
 ## Overview
 
-Chimera Spawn embodies the biological concept of a chimera - one organism with multiple DNA sets - translated to infrastructure as one server running multiple operating systems in isolated containers. It provides sophisticated container management while avoiding the complexities of Docker/Kubernetes.
+Chimera Spawn embodies the biological concept of a chimera - one organism with multiple DNA sets - translated to infrastructure as one server running multiple operating systems in isolated containers. It provides sophisticated container management while leveraging native systemd features.
+
+### Why systemd-nspawn?
+
+Chimera Spawn targets environments where containers must run with **the host's network namespace** - no virtual ethernet, no separate container IP, no bridge dependencies. This is achieved with:
+
+```ini
+[Network]
+Private=no
+VirtualEthernet=no
+```
+
+This enables `systemd-containers` to share the exact same network stack as the host, perfect for environments where network bridges aren't feasible or desired.
+
+### Why not LXD?
+
+LXD is excellent for most use cases, but it intentionally does **not** support "host network mode" (sharing the host network namespace). While LXD supports various networking modes (bridge, macvlan, ipvlan), all of these run containers in separate network namespaces with their own interfaces. Chimera Spawn exists specifically for cases where you need **true host networking**.
+
+If your environment supports bridges/OVN/macvlan cleanly, LXD is usually the better default.
+
+### Why not Docker/Kubernetes?
+
+Docker and Kubernetes excel at application containers, but Chimera Spawn targets **system containers** - full OS environments with systemd as PID 1. While Docker *can* run systemd, it requires extra privileges and cgroup configuration that goes against the typical "one process per container" model. Chimera Spawn provides a cleaner solution for running traditional systemd services in containers.
 
 ## Features
 
@@ -252,6 +274,10 @@ python3 -m black src/ tests/
 # Lint
 python3 -m ruff src/ tests/
 ```
+
+### AI-Assisted Development
+
+This project was developed with AI assistance to accelerate drafting and exploration. All code has been reviewed, tested, and validated by the author. AI tools were used as a development accelerator while maintaining full human oversight over design decisions, code quality, and security.
 
 ## Production Deployment
 
