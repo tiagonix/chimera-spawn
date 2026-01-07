@@ -43,7 +43,7 @@ sudo apt install -y \
     python3-httpx
 
 # Clone the repository
-git clone https://github.com/yourusername/chimera-spawn.git
+git clone https://github.com/tiagonix/chimera-spawn.git
 cd chimera-spawn
 ```
 
