@@ -1,0 +1,40 @@
+---
+# Ubuntu Cloud-Init Templates
+
+ubuntu_base:
+  meta_data: {}
+  user_data: |
+    #cloud-config
+    bootcmd:
+      - apt-get purge -qq -y openssh-server snapd
+    manage_etc_hosts: true
+    users:
+      - name: chimera
+        shell: /bin/bash
+        sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    {% if proxy and proxy.http_proxy %}
+    apt:
+      http_proxy: {{ proxy.http_proxy }}
+      https_proxy: {{ proxy.https_proxy }}
+    write_files:
+      - path: /etc/environment
+        content: |
+          http_proxy="{{ proxy.http_proxy }}"
+          https_proxy="{{ proxy.https_proxy }}"
+          no_proxy="{{ proxy.no_proxy }}"
+      - path: /etc/resolv.conf
+        content: |
+          search chimera.local
+          nameserver 1.1.1.1
+          nameserver 9.9.9.9
+    {% else %}
+    write_files:
+      - path: /etc/resolv.conf
+        content: |
+          search chimera.local
+          nameserver 1.1.1.1
+          nameserver 9.9.9.9
+    {% endif %}
+    runcmd:
+      - apt-get purge -qq -y ubuntu-advantage-tools needrestart
+      - apt-get autoremove -qq -y

@@ -1,0 +1,33 @@
+---
+# Development Node Configuration
+
+containers:
+  ubuntu2404-dev:
+    ensure: present
+    state: running
+    image: ubuntu-24.04-cloud-tar
+    profile: isolated
+    cloud_init:
+      template: ubuntu_base
+      meta_data:
+        purpose: development
+        
+  ubuntu2204-test:
+    ensure: present
+    state: running
+    image: ubuntu-22.04-cloud-tar
+    profile: isolated
+    cloud_init:
+      template: ubuntu_base
+      
+#  debian12-build:
+#    ensure: present
+#    state: running
+#    image: debian-12-cloud-raw
+#    profile: non_isolated
+#
+#  debian13-build:
+#    ensure: present
+#    state: running
+#    image: debian-13-cloud-raw
+#    profile: non_isolated

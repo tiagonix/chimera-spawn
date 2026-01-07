@@ -1,0 +1,19 @@
+---
+# Privileged Profile - Full capabilities for special use cases
+
+privileged:
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    PrivateUsers=no
+    Capability=all
+    [Network]
+    Private=no
+    VirtualEthernet=no
+    [Files]
+    Bind=/dev/loop0
+    Bind=/dev/loop-control
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M

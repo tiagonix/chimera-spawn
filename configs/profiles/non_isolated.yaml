@@ -1,0 +1,15 @@
+---
+# Non-isolated Profile - Less isolation for integration scenarios
+
+non_isolated:
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    PrivateUsers=no
+    [Network]
+    Private=no
+    VirtualEthernet=no
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M
