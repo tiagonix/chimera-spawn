@@ -14,6 +14,19 @@ from chimera.agent.config import ConfigManager
 logger = logging.getLogger(__name__)
 
 
+# Commands that require root privileges
+PRIVILEGED_COMMANDS = {
+    "spawn",
+    "stop",
+    "start",
+    "remove",
+    "exec",
+    "reconcile",
+    "reload",
+    "image_pull",
+}
+
+
 class IPCServer:
     """Unix socket server for IPC communication."""
     
@@ -60,7 +73,17 @@ class IPCServer:
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handle individual client connections."""
         client_addr = writer.get_extra_info('peername')
-        logger.debug(f"Client connected: {client_addr}")
+        
+        # Get peer credentials to identify the user
+        try:
+            # peercred is a tuple of (pid, uid, gid)
+            creds = writer.get_extra_info('peercred')
+            client_uid = creds[1] if creds else None
+        except Exception as e:
+            logger.warning(f"Failed to get peer credentials: {e}")
+            client_uid = None
+            
+        logger.debug(f"Client connected: {client_addr}, UID: {client_uid}")
         
         try:
             # Read request
@@ -71,8 +94,8 @@ class IPCServer:
             request = json.loads(data.decode())
             logger.debug(f"Received request: {request.get('command')}")
             
-            # Process request
-            response = await self._process_request(request)
+            # Process request with authorization check
+            response = await self._process_request(request, client_uid)
             
             # Send response
             response_data = json.dumps(response).encode()
@@ -101,10 +124,19 @@ class IPCServer:
             writer.close()
             await writer.wait_closed()
             
-    async def _process_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    async def _process_request(self, request: Dict[str, Any], client_uid: Optional[int]) -> Dict[str, Any]:
         """Process IPC request and return response."""
         command = request.get("command")
         args = request.get("args", {})
+        
+        # Check authorization for privileged commands
+        if command in PRIVILEGED_COMMANDS:
+            if client_uid != 0:
+                logger.warning(f"Denied privileged command '{command}' for non-root user (UID: {client_uid})")
+                return {
+                    "success": False,
+                    "error": "Permission denied: Root privileges required",
+                }
         
         handlers = {
             "status": self._handle_status,
