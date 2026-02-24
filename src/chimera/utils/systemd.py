@@ -26,20 +26,15 @@ async def run_command(
     check: bool = True,
     capture_output: bool = False,
     timeout: Optional[int] = None,
-    shell: bool = False,
     **kwargs
 ) -> CommandResult:
     """Run a command asynchronously."""
     logger.debug(f"Running command: {' '.join(cmd)}")
     
-    if shell:
-        cmd = ' '.join(cmd)
-        
     process = await asyncio.create_subprocess_exec(
-        *([cmd] if shell else cmd),
+        *cmd,
         stdout=asyncio.subprocess.PIPE if capture_output else None,
         stderr=asyncio.subprocess.PIPE if capture_output else None,
-        shell=shell,
         **kwargs
     )
     

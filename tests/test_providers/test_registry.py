@@ -32,10 +32,10 @@ class MockProvider(BaseProvider):
         return True
 
 
-@pytest.mark.asyncio
 class TestProviderRegistry:
     """Test ProviderRegistry initialization and injection."""
     
+    @pytest.mark.asyncio
     async def test_initialization_injection(self):
         """Test that registry injects itself into providers."""
         registry = ProviderRegistry()
@@ -58,6 +58,7 @@ class TestProviderRegistry:
         assert provider.config_ref == mock_config
         assert provider.registry_ref == registry
 
+    @pytest.mark.asyncio
     async def test_get_provider(self):
         """Test retrieving providers."""
         registry = ProviderRegistry()

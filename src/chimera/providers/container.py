@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import subprocess
+import shlex
 from pathlib import Path
 from typing import Optional, Dict, Any, TYPE_CHECKING
 
@@ -241,7 +242,10 @@ class ContainerProvider(BaseProvider):
             
     async def execute(self, spec: ContainerSpec, command: list[str]) -> Dict[str, Any]:
         """Execute command in container."""
-        cmd = ["machinectl", "shell", spec.name, "/bin/bash", "-c", " ".join(command)]
+        # Use shlex.join to safely quote arguments for shell execution
+        # avoiding injection vulnerabilities
+        safe_command = shlex.join(command)
+        cmd = ["machinectl", "shell", spec.name, "/bin/bash", "-c", safe_command]
         
         try:
             result = await run_command(cmd, capture_output=True, check=True)

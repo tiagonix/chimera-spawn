@@ -64,6 +64,11 @@ sudo apt install -y \
     python3-aiofiles \
     python3-httpx
 
+# For running full Pytest suite
+sudo apt install -y \
+    python3-pytest-asyncio \
+    python3-pytest-cov
+
 # Clone the repository
 git clone https://github.com/tiagonix/chimera-spawn.git
 cd chimera-spawn
