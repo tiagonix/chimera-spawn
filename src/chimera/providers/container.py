@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from chimera.providers.base import BaseProvider, ProviderStatus
-from chimera.providers.cloudinit import CloudInitProvider
+from chimera.providers.registry import get_provider_registry
 from chimera.models.container import ContainerSpec
 from chimera.utils.systemd import run_command, SystemdDBus
 from chimera.utils.templates import render_template
@@ -25,7 +25,6 @@ class ContainerProvider(BaseProvider):
         self.nspawn_dir: Optional[Path] = None
         self.system_dir: Optional[Path] = None
         self.systemd_dbus: Optional[SystemdDBus] = None
-        self.cloudinit_provider: Optional[CloudInitProvider] = None
         self.proxy_config = None
         
     async def initialize(self, config):
@@ -38,10 +37,11 @@ class ContainerProvider(BaseProvider):
         self.systemd_dbus = SystemdDBus()
         await self.systemd_dbus.connect()
         
-        # Initialize cloud-init provider
-        self.cloudinit_provider = CloudInitProvider()
-        await self.cloudinit_provider.initialize(config)
-        
+    @property
+    def cloudinit_provider(self):
+        """Get cloud-init provider from registry."""
+        return get_provider_registry().get_provider("cloudinit")
+
     async def status(self, spec: ContainerSpec) -> ProviderStatus:
         """Check if container exists."""
         try:
@@ -107,7 +107,10 @@ class ContainerProvider(BaseProvider):
                 
             # Prepare cloud-init if specified
             if spec.cloud_init:
-                await self.cloudinit_provider.prepare(spec)
+                if self.cloudinit_provider:
+                    await self.cloudinit_provider.prepare(spec)
+                else:
+                    logger.warning("CloudInitProvider not found in registry")
         else:
             logger.info(f"Container {spec.name} uses raw image - skipping custom_files and cloud-init")
             
