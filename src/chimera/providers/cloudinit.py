@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 import json
 import io
 
@@ -11,6 +11,9 @@ from ruamel.yaml import YAML
 from chimera.providers.base import BaseProvider, ProviderStatus
 from chimera.models.container import ContainerSpec, CloudInitSpec
 from chimera.utils.templates import render_template
+
+if TYPE_CHECKING:
+    from chimera.providers.registry import ProviderRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -26,8 +29,8 @@ class CloudInitProvider(BaseProvider):
         self.yaml.preserve_quotes = True
         self.proxy_config = None
         
-    async def initialize(self, config):
-        """Initialize provider with configuration."""
+    async def initialize(self, config, registry: "ProviderRegistry"):
+        """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
         self.proxy_config = config.proxy
         
