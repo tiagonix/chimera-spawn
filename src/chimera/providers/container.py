@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from chimera.providers.base import BaseProvider, ProviderStatus
-from chimera.providers.registry import get_provider_registry
+# get_provider_registry removed from top-level import to avoid circular dependency
 from chimera.models.container import ContainerSpec
 from chimera.utils.systemd import run_command, SystemdDBus
 from chimera.utils.templates import render_template
@@ -40,6 +40,8 @@ class ContainerProvider(BaseProvider):
     @property
     def cloudinit_provider(self):
         """Get cloud-init provider from registry."""
+        # Lazy import to avoid circular dependency
+        from chimera.providers.registry import get_provider_registry
         return get_provider_registry().get_provider("cloudinit")
 
     async def status(self, spec: ContainerSpec) -> ProviderStatus:
