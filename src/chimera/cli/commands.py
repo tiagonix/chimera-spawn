@@ -16,6 +16,33 @@ from chimera.cli.client import IPCClient
 console = Console()
 
 
+def _run_action(
+    client: IPCClient,
+    description: str,
+    command: str,
+    args: Dict[str, Any],
+    success_msg: Optional[str] = None,
+    quiet: bool = False
+) -> Dict[str, Any]:
+    """Helper to run an IPC action with a progress spinner."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        disable=quiet,
+    ) as progress:
+        task = progress.add_task(description, total=None)
+        
+        response = client.request(command, args)
+        
+        progress.update(task, completed=True)
+        
+    if success_msg and not quiet:
+        console.print(success_msg)
+        
+    return response
+
+
 def list_resources(client: IPCClient, resource_type: Optional[str] = None):
     """List resources with formatted output."""
     if not resource_type:
@@ -127,54 +154,37 @@ def spawn_container(client: IPCClient, name: Optional[str], all_containers: bool
 
 def stop_container(client: IPCClient, name: str, quiet: bool = False):
     """Stop a container."""
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        disable=quiet,
-    ) as progress:
-        task = progress.add_task(f"Stopping container {name}...", total=None)
-        
-        response = client.request("stop", {"name": name})
-        
-        progress.update(task, completed=True)
-        
-    if not quiet:
-        console.print(f"[green]✓[/green] Container {name} stopped")
+    _run_action(
+        client,
+        description=f"Stopping container {name}...",
+        command="stop",
+        args={"name": name},
+        success_msg=f"[green]✓[/green] Container {name} stopped",
+        quiet=quiet
+    )
 
 
 def start_container(client: IPCClient, name: str, quiet: bool = False):
     """Start a container."""
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        disable=quiet,
-    ) as progress:
-        task = progress.add_task(f"Starting container {name}...", total=None)
-        
-        response = client.request("start", {"name": name})
-        
-        progress.update(task, completed=True)
-        
-    if not quiet:
-        console.print(f"[green]✓[/green] Container {name} started")
+    _run_action(
+        client,
+        description=f"Starting container {name}...",
+        command="start",
+        args={"name": name},
+        success_msg=f"[green]✓[/green] Container {name} started",
+        quiet=quiet
+    )
 
 
 def remove_container(client: IPCClient, name: str):
     """Remove a container."""
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"Removing container {name}...", total=None)
-        
-        response = client.request("remove", {"name": name})
-        
-        progress.update(task, completed=True)
-        
-    console.print(f"[green]✓[/green] Container {name} removed")
+    _run_action(
+        client,
+        description=f"Removing container {name}...",
+        command="remove",
+        args={"name": name},
+        success_msg=f"[green]✓[/green] Container {name} removed"
+    )
 
 
 def exec_in_container(client: IPCClient, name: str, command: List[str]):
@@ -203,18 +213,13 @@ def shell_in_container(name: str):
 
 def pull_image(client: IPCClient, name: str):
     """Pull an image."""
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"Pulling image {name}...", total=None)
-        
-        response = client.request("image_pull", {"name": name})
-        
-        progress.update(task, completed=True)
-        
-    console.print(f"[green]✓[/green] Image {name} pulled successfully")
+    _run_action(
+        client,
+        description=f"Pulling image {name}...",
+        command="image_pull",
+        args={"name": name},
+        success_msg=f"[green]✓[/green] Image {name} pulled successfully"
+    )
 
 
 def show_status(client: IPCClient, container: Optional[str] = None):
