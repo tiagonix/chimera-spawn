@@ -10,7 +10,7 @@ from typing import Optional
 from chimera.agent.config import ConfigManager
 from chimera.agent.engine import StateEngine
 from chimera.agent.ipc import IPCServer
-from chimera.providers import get_provider_registry
+from chimera.providers import ProviderRegistry
 from chimera.utils.logging import setup_logging
 
 
@@ -44,7 +44,7 @@ class ChimeraAgent:
         setup_logging(config.agent.log_level)
         
         # Initialize provider registry
-        registry = get_provider_registry()
+        registry = ProviderRegistry()
         await registry.initialize(config)
         
         # Initialize state engine

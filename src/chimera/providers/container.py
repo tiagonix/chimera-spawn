@@ -4,14 +4,16 @@ import asyncio
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 
 from chimera.providers.base import BaseProvider, ProviderStatus
-# get_provider_registry removed from top-level import to avoid circular dependency
 from chimera.models.container import ContainerSpec
 from chimera.utils.systemd import run_command, SystemdDBus
 from chimera.utils.templates import render_template
 
+if TYPE_CHECKING:
+    from chimera.providers.registry import ProviderRegistry
+    from chimera.providers.cloudinit import CloudInitProvider
 
 logger = logging.getLogger(__name__)
 
@@ -26,23 +28,25 @@ class ContainerProvider(BaseProvider):
         self.system_dir: Optional[Path] = None
         self.systemd_dbus: Optional[SystemdDBus] = None
         self.proxy_config = None
+        self._cloudinit_provider: Optional["CloudInitProvider"] = None
         
-    async def initialize(self, config):
-        """Initialize provider with configuration."""
+    async def initialize(self, config, registry: "ProviderRegistry"):
+        """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
         self.nspawn_dir = Path(config.systemd.nspawn_dir)
         self.system_dir = Path(config.systemd.system_dir)
         self.proxy_config = config.proxy
         
+        # Inject dependency explicitly
+        self._cloudinit_provider = registry.get_provider("cloudinit")
+        
         self.systemd_dbus = SystemdDBus()
         await self.systemd_dbus.connect()
         
     @property
-    def cloudinit_provider(self):
-        """Get cloud-init provider from registry."""
-        # Lazy import to avoid circular dependency
-        from chimera.providers.registry import get_provider_registry
-        return get_provider_registry().get_provider("cloudinit")
+    def cloudinit_provider(self) -> Optional["CloudInitProvider"]:
+        """Get cloud-init provider."""
+        return self._cloudinit_provider
 
     async def status(self, spec: ContainerSpec) -> ProviderStatus:
         """Check if container exists."""

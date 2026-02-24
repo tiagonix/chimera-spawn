@@ -2,8 +2,11 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from chimera.providers.registry import ProviderRegistry
 
 
 class ProviderStatus(Enum):
@@ -18,8 +21,8 @@ class BaseProvider(ABC):
     """Base provider interface that all providers must implement."""
     
     @abstractmethod
-    async def initialize(self, config: Any):
-        """Initialize the provider with configuration."""
+    async def initialize(self, config: Any, registry: "ProviderRegistry"):
+        """Initialize the provider with configuration and registry."""
         pass
         
     @abstractmethod

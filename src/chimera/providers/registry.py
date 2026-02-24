@@ -27,15 +27,23 @@ class ProviderRegistry:
         }
         
     async def initialize(self, config):
-        """Initialize all providers."""
+        """Initialize all providers with two-pass injection."""
+        # Phase 1: Instantiate all providers
         for name, provider_class in self._provider_classes.items():
             try:
-                provider = provider_class()
-                await provider.initialize(config)
-                self._providers[name] = provider
+                self._providers[name] = provider_class()
+            except Exception as e:
+                logger.error(f"Failed to instantiate provider {name}: {e}")
+                raise
+
+        # Phase 2: Initialize and inject registry
+        for name, provider in self._providers.items():
+            try:
+                await provider.initialize(config, self)
                 logger.debug(f"Initialized provider: {name}")
             except Exception as e:
                 logger.error(f"Failed to initialize provider {name}: {e}")
+                raise
                 
     def get_provider(self, name: str) -> Optional[BaseProvider]:
         """Get a provider by name."""
@@ -44,15 +52,3 @@ class ProviderRegistry:
     def list_providers(self) -> list[str]:
         """List available provider names."""
         return list(self._providers.keys())
-
-
-# Global provider registry
-_registry: Optional[ProviderRegistry] = None
-
-
-def get_provider_registry() -> ProviderRegistry:
-    """Get or create the global provider registry."""
-    global _registry
-    if _registry is None:
-        _registry = ProviderRegistry()
-    return _registry

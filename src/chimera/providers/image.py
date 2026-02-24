@@ -4,11 +4,14 @@ import asyncio
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from chimera.providers.base import BaseProvider, ProviderStatus
 from chimera.models.image import ImageSpec
 from chimera.utils.systemd import run_command, SystemdDBus
+
+if TYPE_CHECKING:
+    from chimera.providers.registry import ProviderRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -22,8 +25,8 @@ class ImageProvider(BaseProvider):
         self.machines_dir: Optional[Path] = None
         self.systemd_dbus: Optional[SystemdDBus] = None
         
-    async def initialize(self, config):
-        """Initialize provider with configuration."""
+    async def initialize(self, config, registry: "ProviderRegistry"):
+        """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
         self.systemd_dbus = SystemdDBus()
         await self.systemd_dbus.connect()

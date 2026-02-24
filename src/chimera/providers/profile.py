@@ -1,10 +1,13 @@
 """Profile provider for managing nspawn profiles."""
 
 import logging
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 from chimera.providers.base import BaseProvider, ProviderStatus
 from chimera.models.profile import ProfileSpec
+
+if TYPE_CHECKING:
+    from chimera.providers.registry import ProviderRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -17,8 +20,8 @@ class ProfileProvider(BaseProvider):
         """Initialize profile provider."""
         self.profiles: Dict[str, ProfileSpec] = {}
         
-    async def initialize(self, config):
-        """Initialize provider with configuration."""
+    async def initialize(self, config, registry: "ProviderRegistry"):
+        """Initialize provider with configuration and registry."""
         # Profiles are loaded by ConfigManager
         pass
         
