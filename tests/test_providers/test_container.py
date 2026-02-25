@@ -14,7 +14,10 @@ from chimera.providers.base import ProviderStatus
 @pytest.fixture
 def container_provider():
     """Create container provider instance."""
-    return ContainerProvider()
+    provider = ContainerProvider()
+    # Mock systemd_dbus to avoid actual DBus connection attempts
+    provider.systemd_dbus = AsyncMock()
+    return provider
 
 
 @pytest.mark.asyncio
@@ -113,3 +116,35 @@ class TestContainerProvider:
                     
                     assert status == ProviderStatus.ABSENT
                     mock_cleanup.assert_not_called()
+
+    async def test_lifecycle_uses_dbus(self, container_provider):
+        """Test that lifecycle methods use the SystemdDBus wrapper."""
+        spec = ContainerSpec(name="test-dbus", image="ubuntu")
+        service_name = "systemd-nspawn@test-dbus.service"
+        
+        # Mock internal helpers to avoid complex setup
+        container_provider.is_running = AsyncMock(return_value=False)
+        container_provider._wait_for_ready = AsyncMock()
+        
+        # Test start
+        await container_provider.start(spec)
+        container_provider.systemd_dbus.start_unit.assert_called_with(service_name)
+        
+        # Reset and test stop
+        container_provider.systemd_dbus.reset_mock()
+        container_provider.is_running.return_value = True
+        await container_provider.stop(spec)
+        container_provider.systemd_dbus.stop_unit.assert_called_with(service_name)
+        
+        # Test is_running via get_unit_state
+        # We need to call the real is_running logic here, so unmock it
+        del container_provider.is_running
+        
+        container_provider.systemd_dbus.get_unit_state.return_value = "active"
+        is_active = await container_provider.is_running(spec)
+        assert is_active is True
+        container_provider.systemd_dbus.get_unit_state.assert_called_with(service_name)
+        
+        container_provider.systemd_dbus.get_unit_state.return_value = "inactive"
+        is_active = await container_provider.is_running(spec)
+        assert is_active is False
