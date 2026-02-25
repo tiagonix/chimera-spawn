@@ -196,11 +196,15 @@ class ContainerProvider(BaseProvider):
         """Check if container is running."""
         try:
             service_name = f"systemd-nspawn@{spec.name}.service"
-            result = await run_command([
-                "systemctl", "is-active", service_name
-            ], check=False)
-            
-            return result.returncode == 0
+            if self.systemd_dbus:
+                state = await self.systemd_dbus.get_unit_state(service_name)
+                return state == "active"
+            else:
+                # Fallback if DBus not initialized (should not happen in normal op)
+                result = await run_command([
+                    "systemctl", "is-active", service_name
+                ], check=False)
+                return result.returncode == 0
             
         except Exception as e:
             logger.error(f"Error checking container state: {e}")
@@ -216,12 +220,15 @@ class ContainerProvider(BaseProvider):
         
         service_name = f"systemd-nspawn@{spec.name}.service"
         try:
-            await run_command(["systemctl", "start", service_name])
+            if self.systemd_dbus:
+                await self.systemd_dbus.start_unit(service_name)
+            else:
+                await run_command(["systemctl", "start", service_name])
             
             # Wait for container to be ready
             await self._wait_for_ready(spec.name)
             
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             logger.error(f"Failed to start container: {e}")
             raise
             
@@ -235,8 +242,11 @@ class ContainerProvider(BaseProvider):
         
         service_name = f"systemd-nspawn@{spec.name}.service"
         try:
-            await run_command(["systemctl", "stop", service_name])
-        except subprocess.CalledProcessError as e:
+            if self.systemd_dbus:
+                await self.systemd_dbus.stop_unit(service_name)
+            else:
+                await run_command(["systemctl", "stop", service_name])
+        except Exception as e:
             logger.error(f"Failed to stop container: {e}")
             raise
             
@@ -314,7 +324,10 @@ class ContainerProvider(BaseProvider):
         logger.debug(f"Created nspawn config: {nspawn_file}")
         
         # Reload systemd
-        await run_command(["systemctl", "daemon-reload"])
+        if self.systemd_dbus:
+            await self.systemd_dbus.reload_daemon()
+        else:
+            await run_command(["systemctl", "daemon-reload"])
         
     async def _create_systemd_override(self, spec: ContainerSpec) -> None:
         """Create systemd service override."""
@@ -335,24 +348,33 @@ class ContainerProvider(BaseProvider):
         logger.debug(f"Created systemd override: {override_file}")
         
         # Reload systemd
-        await run_command(["systemctl", "daemon-reload"])
+        if self.systemd_dbus:
+            await self.systemd_dbus.reload_daemon()
+        else:
+            await run_command(["systemctl", "daemon-reload"])
         
     async def _enable_service(self, container_name: str) -> None:
         """Enable container service."""
         service_name = f"systemd-nspawn@{container_name}.service"
         try:
-            await run_command(["systemctl", "enable", service_name])
+            if self.systemd_dbus:
+                await self.systemd_dbus.enable_unit(service_name)
+            else:
+                await run_command(["systemctl", "enable", service_name])
             logger.debug(f"Enabled service {service_name}")
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             logger.error(f"Failed to enable service: {e}")
             
     async def _disable_service(self, container_name: str) -> None:
         """Disable container service."""
         service_name = f"systemd-nspawn@{container_name}.service"
         try:
-            await run_command(["systemctl", "disable", service_name])
+            if self.systemd_dbus:
+                await self.systemd_dbus.disable_unit(service_name)
+            else:
+                await run_command(["systemctl", "disable", service_name])
             logger.debug(f"Disabled service {service_name}")
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
             logger.warning(f"Failed to disable service: {e}")
             
     async def _cleanup_config_files(self, container_name: str) -> None:
