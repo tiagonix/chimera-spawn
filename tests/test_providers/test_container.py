@@ -87,3 +87,29 @@ class TestContainerProvider:
                 unlink_called = len(mock_to_thread.call_args_list) > 0
                 
                 assert unlink_called, "Should have offloaded filesystem operations"
+
+    async def test_status_is_read_only(self, container_provider):
+        """Test that status check does not perform cleanup on partial containers."""
+        spec = ContainerSpec(name="test-partial", image="ubuntu")
+        
+        # Mock dependencies
+        container_provider.machines_dir = Path("/var/lib/machines")
+        
+        # Mock run_command to return failure (container not known to machinectl)
+        with patch("chimera.providers.container.run_command", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            
+            with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+                # Simulate dir_exists=True, raw_exists=False
+                # The implementation calls to_thread(container_dir.exists) then to_thread(container_raw.exists)
+                # We mock the return values for these sequential calls
+                mock_to_thread.side_effect = [True, False]
+                
+                # Mock cleanup method to ensure it's NOT called
+                # We need to patch the method on the instance, or rely on the fact 
+                # that _cleanup_partial_container is an async method
+                with patch.object(container_provider, '_cleanup_partial_container', new_callable=AsyncMock) as mock_cleanup:
+                    status = await container_provider.status(spec)
+                    
+                    assert status == ProviderStatus.ABSENT
+                    mock_cleanup.assert_not_called()

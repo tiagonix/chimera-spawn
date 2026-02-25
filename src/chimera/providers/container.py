@@ -78,7 +78,8 @@ class ContainerProvider(BaseProvider):
                     else:
                         # Directory-based container with issues
                         logger.warning(f"Container {spec.name} has partial creation")
-                        await self._cleanup_partial_container(spec.name)
+                        # NOTE: Destructive cleanup removed from read-only status check
+                        # Cleanup is deferred to state-mutating methods (present/absent)
                         
                 return ProviderStatus.ABSENT
                 
@@ -97,6 +98,10 @@ class ContainerProvider(BaseProvider):
             return
             
         logger.info(f"Creating container {spec.name}")
+
+        # Ensure a clean slate before attempting a clone operation
+        # This handles the case of partial/broken containers detected by status
+        await self._cleanup_partial_container(spec.name)
         
         # Check if this is a raw image
         is_raw_image = spec._image_spec and spec._image_spec.type == "raw"
@@ -150,37 +155,28 @@ class ContainerProvider(BaseProvider):
         """Ensure container is absent."""
         current_status = await self.status(spec)
         
-        if current_status == ProviderStatus.ABSENT:
-            logger.debug(f"Container {spec.name} already absent")
-            return
+        if current_status == ProviderStatus.PRESENT:
+            logger.info(f"Removing container {spec.name}")
             
-        logger.info(f"Removing container {spec.name}")
-        
-        # Stop service first
-        await self.stop(spec)
-        
-        # Disable service
-        await self._disable_service(spec.name)
-        
-        # Remove container
-        try:
-            await run_command(["machinectl", "remove", spec.name])
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to remove container: {e}")
-            raise
+            # Stop service first
+            await self.stop(spec)
             
-        # Clean up configuration files
-        await self._cleanup_config_files(spec.name)
-        
-        # Clean up container files if they still exist
-        container_dir = self.machines_dir / spec.name
-        container_raw = self.machines_dir / f"{spec.name}.raw"
-        
-        if await asyncio.to_thread(container_dir.exists):
-            await asyncio.to_thread(shutil.rmtree, container_dir)
+            # Disable service
+            await self._disable_service(spec.name)
             
-        if await asyncio.to_thread(container_raw.exists):
-            await asyncio.to_thread(container_raw.unlink)
+            # Remove container
+            try:
+                await run_command(["machinectl", "remove", spec.name])
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to remove container: {e}")
+                raise
+        else:
+            logger.debug(f"Container {spec.name} already absent (checking for residuals)")
+
+        # Clean up any residuals, configuration files, or partial states
+        # This makes the method idempotent and handles the case where status returned ABSENT
+        # but the directory or config files still exist (partial state)
+        await self._cleanup_partial_container(spec.name)
             
     async def validate_spec(self, spec: ContainerSpec) -> bool:
         """Validate container specification."""
@@ -373,17 +369,21 @@ class ContainerProvider(BaseProvider):
             
     async def _cleanup_partial_container(self, container_name: str) -> None:
         """Clean up partially created container."""
-        logger.info(f"Cleaning up partial container {container_name}")
+        # Note: This is now called defensively in present/absent and handles logging internally.
+        # We might see "Cleaning up partial container" even if nothing is there if we're not careful,
+        # but the checks inside are guarded by exists().
         
         # Clean up directory
         container_dir = self.machines_dir / container_name
         if await asyncio.to_thread(container_dir.exists):
+            logger.info(f"Cleaning up container directory {container_name}")
             await asyncio.to_thread(shutil.rmtree, container_dir)
             logger.debug(f"Removed partial container directory: {container_dir}")
             
         # Clean up raw file
         container_raw = self.machines_dir / f"{container_name}.raw"
         if await asyncio.to_thread(container_raw.exists):
+            logger.info(f"Cleaning up container raw file {container_name}")
             await asyncio.to_thread(container_raw.unlink)
             logger.debug(f"Removed partial container raw file: {container_raw}")
             
