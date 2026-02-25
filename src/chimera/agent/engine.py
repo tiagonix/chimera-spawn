@@ -7,7 +7,8 @@ from datetime import datetime
 
 from chimera.agent.config import ConfigManager
 from chimera.providers import ProviderRegistry, ProviderStatus, BaseProvider
-from chimera.models.container import ContainerSpec
+from chimera.models.container import ContainerSpec, CloudInitSpec
+from chimera.utils.templates import merge_dicts
 
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,32 @@ class StateEngine:
                 spec._profile_spec = profile_spec
             else:
                 logger.warning(f"Profile {spec.profile} not found for container {spec.name}")
+
+        # Add cloud-init spec from template
+        self._enrich_cloud_init_spec(spec)
+
+    def _enrich_cloud_init_spec(self, spec: ContainerSpec):
+        """Enrich cloud-init spec by resolving and merging templates."""
+        if not spec.cloud_init or not spec.cloud_init.template:
+            return
+
+        template_name = spec.cloud_init.template
+        if template_name in self.config_manager.cloud_init_templates:
+            template_data = self.config_manager.cloud_init_templates[template_name]
+            
+            # Convert spec's cloud_init to a dict for merging
+            spec_ci_data = spec.cloud_init.dict(exclude_unset=True)
+
+            # Merge template with overrides using deep merge
+            merged_data = merge_dicts(template_data, spec_ci_data)
+            
+            # The template has been processed and is no longer needed
+            merged_data.pop("template", None)
+
+            # Re-create the CloudInitSpec from the merged data
+            spec.cloud_init = CloudInitSpec(**merged_data)
+        else:
+            logger.warning(f"Cloud-init template '{template_name}' not found for container {spec.name}")
                 
     async def _ensure_container_state(self, name: str, spec: ContainerSpec):
         """Ensure container is in desired running state."""

@@ -12,7 +12,6 @@ from chimera.models.config import ChimeraConfig
 from chimera.models.container import ContainerSpec
 from chimera.models.image import ImageSpec
 from chimera.models.profile import ProfileSpec
-from chimera.utils.templates import merge_dicts
 
 
 logger = logging.getLogger(__name__)
@@ -124,15 +123,6 @@ class ConfigManager:
                 data = await self._read_yaml(yaml_file)
                 if "containers" in data:
                     for name, spec in data["containers"].items():
-                        # Resolve cloud-init template if specified
-                        if spec.get("cloud_init") and "template" in spec["cloud_init"]:
-                            template_name = spec["cloud_init"]["template"]
-                            if template_name in self.cloud_init_templates:
-                                template = self.cloud_init_templates[template_name]
-                                # Merge template with overrides using deep merge
-                                cloud_init = merge_dicts(template, spec["cloud_init"])
-                                spec["cloud_init"] = cloud_init
-                                
                         self.containers[name] = ContainerSpec(name=name, **spec)
                 logger.debug(f"Loaded containers from {yaml_file}")
             except Exception as e:
