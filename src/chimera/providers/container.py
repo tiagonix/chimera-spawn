@@ -4,6 +4,7 @@ import asyncio
 import logging
 import subprocess
 import shlex
+import shutil
 from pathlib import Path
 from typing import Optional, Dict, Any, TYPE_CHECKING
 
@@ -31,7 +32,7 @@ class ContainerProvider(BaseProvider):
         self.proxy_config = None
         self._cloudinit_provider: Optional["CloudInitProvider"] = None
         
-    async def initialize(self, config, registry: "ProviderRegistry"):
+    async def initialize(self, config, registry: "ProviderRegistry") -> None:
         """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
         self.nspawn_dir = Path(config.systemd.nspawn_dir)
@@ -64,10 +65,14 @@ class ContainerProvider(BaseProvider):
                 container_dir = self.machines_dir / spec.name
                 container_raw = self.machines_dir / f"{spec.name}.raw"
                 
-                if container_dir.exists() or container_raw.exists():
+                # Check existence asynchronously (stat call)
+                dir_exists = await asyncio.to_thread(container_dir.exists)
+                raw_exists = await asyncio.to_thread(container_raw.exists)
+                
+                if dir_exists or raw_exists:
                     # Container files exist but machinectl doesn't see it
                     # For raw images, this might be normal if it's never been started
-                    if container_raw.exists() and spec._image_spec and spec._image_spec.type == "raw":
+                    if raw_exists and spec._image_spec and spec._image_spec.type == "raw":
                         # Raw image exists, consider it present
                         return ProviderStatus.PRESENT
                     else:
@@ -123,7 +128,7 @@ class ContainerProvider(BaseProvider):
             
         await self._ensure_configs(spec)
         
-    async def _ensure_configs(self, spec: ContainerSpec):
+    async def _ensure_configs(self, spec: ContainerSpec) -> None:
         """Ensure configuration files are in place."""
         # Create .nspawn configuration file
         if spec._profile_spec and spec._profile_spec.nspawn_config_content:
@@ -171,12 +176,11 @@ class ContainerProvider(BaseProvider):
         container_dir = self.machines_dir / spec.name
         container_raw = self.machines_dir / f"{spec.name}.raw"
         
-        if container_dir.exists():
-            import shutil
-            shutil.rmtree(container_dir)
+        if await asyncio.to_thread(container_dir.exists):
+            await asyncio.to_thread(shutil.rmtree, container_dir)
             
-        if container_raw.exists():
-            container_raw.unlink()
+        if await asyncio.to_thread(container_raw.exists):
+            await asyncio.to_thread(container_raw.unlink)
             
     async def validate_spec(self, spec: ContainerSpec) -> bool:
         """Validate container specification."""
@@ -206,7 +210,7 @@ class ContainerProvider(BaseProvider):
             logger.error(f"Error checking container state: {e}")
             return False
             
-    async def start(self, spec: ContainerSpec):
+    async def start(self, spec: ContainerSpec) -> None:
         """Start the container."""
         if await self.is_running(spec):
             logger.debug(f"Container {spec.name} already running")
@@ -225,7 +229,7 @@ class ContainerProvider(BaseProvider):
             logger.error(f"Failed to start container: {e}")
             raise
             
-    async def stop(self, spec: ContainerSpec):
+    async def stop(self, spec: ContainerSpec) -> None:
         """Stop the container."""
         if not await self.is_running(spec):
             logger.debug(f"Container {spec.name} already stopped")
@@ -262,7 +266,7 @@ class ContainerProvider(BaseProvider):
                 "stderr": e.stderr if hasattr(e, 'stderr') else "",
             }
             
-    async def _apply_custom_files(self, container_name: str, custom_files: list):
+    async def _apply_custom_files(self, container_name: str, custom_files: list) -> None:
         """Apply custom file modifications to the cloned container."""
         container_path = self.machines_dir / container_name
         
@@ -271,35 +275,36 @@ class ContainerProvider(BaseProvider):
             
             try:
                 if file_spec.ensure == "absent":
-                    if file_path.exists():
-                        if file_path.is_dir():
-                            file_path.rmdir()
+                    if await asyncio.to_thread(file_path.exists):
+                        if await asyncio.to_thread(file_path.is_dir):
+                            await asyncio.to_thread(file_path.rmdir)
                         else:
-                            file_path.unlink()
+                            await asyncio.to_thread(file_path.unlink)
                         logger.debug(f"Removed {file_path} from container {container_name}")
                         
                 elif file_spec.ensure == "link":
                     if file_spec.target:
                         # Remove existing file/link if present
-                        if file_path.exists() or file_path.is_symlink():
-                            file_path.unlink()
+                        if await asyncio.to_thread(file_path.exists) or await asyncio.to_thread(file_path.is_symlink):
+                            await asyncio.to_thread(file_path.unlink)
                             
                         # Create parent directory if needed
-                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        # parent.mkdir is blocking, use to_thread
+                        await asyncio.to_thread(lambda: file_path.parent.mkdir(parents=True, exist_ok=True))
                         
                         # Create symbolic link
-                        file_path.symlink_to(file_spec.target)
+                        await asyncio.to_thread(file_path.symlink_to, file_spec.target)
                         logger.debug(f"Created symlink {file_path} -> {file_spec.target} in container {container_name}")
                         
             except Exception as e:
                 logger.error(f"Error modifying {file_path} in container {container_name}: {e}")
                 
-    async def _create_nspawn_config(self, spec: ContainerSpec):
+    async def _create_nspawn_config(self, spec: ContainerSpec) -> None:
         """Create .nspawn configuration file."""
         nspawn_file = self.nspawn_dir / f"{spec.name}.nspawn"
         
         # Ensure directory exists
-        self.nspawn_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: self.nspawn_dir.mkdir(parents=True, exist_ok=True))
         
         # Render template with any variables
         content = render_template(
@@ -309,19 +314,19 @@ class ContainerProvider(BaseProvider):
         )
         
         # Write config file
-        nspawn_file.write_text(content)
+        await asyncio.to_thread(nspawn_file.write_text, content)
         logger.debug(f"Created nspawn config: {nspawn_file}")
         
         # Reload systemd
         await run_command(["systemctl", "daemon-reload"])
         
-    async def _create_systemd_override(self, spec: ContainerSpec):
+    async def _create_systemd_override(self, spec: ContainerSpec) -> None:
         """Create systemd service override."""
         override_dir = self.system_dir / f"systemd-nspawn@{spec.name}.service.d"
         override_file = override_dir / "override.conf"
         
         # Create directory
-        override_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: override_dir.mkdir(parents=True, exist_ok=True))
         
         # Render template
         content = render_template(
@@ -330,13 +335,13 @@ class ContainerProvider(BaseProvider):
         )
         
         # Write override file
-        override_file.write_text(content)
+        await asyncio.to_thread(override_file.write_text, content)
         logger.debug(f"Created systemd override: {override_file}")
         
         # Reload systemd
         await run_command(["systemctl", "daemon-reload"])
         
-    async def _enable_service(self, container_name: str):
+    async def _enable_service(self, container_name: str) -> None:
         """Enable container service."""
         service_name = f"systemd-nspawn@{container_name}.service"
         try:
@@ -345,7 +350,7 @@ class ContainerProvider(BaseProvider):
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to enable service: {e}")
             
-    async def _disable_service(self, container_name: str):
+    async def _disable_service(self, container_name: str) -> None:
         """Disable container service."""
         service_name = f"systemd-nspawn@{container_name}.service"
         try:
@@ -354,40 +359,38 @@ class ContainerProvider(BaseProvider):
         except subprocess.CalledProcessError as e:
             logger.warning(f"Failed to disable service: {e}")
             
-    async def _cleanup_config_files(self, container_name: str):
+    async def _cleanup_config_files(self, container_name: str) -> None:
         """Clean up configuration files."""
         # Remove .nspawn file
         nspawn_file = self.nspawn_dir / f"{container_name}.nspawn"
-        if nspawn_file.exists():
-            nspawn_file.unlink()
+        if await asyncio.to_thread(nspawn_file.exists):
+            await asyncio.to_thread(nspawn_file.unlink)
             
         # Remove systemd override directory
         override_dir = self.system_dir / f"systemd-nspawn@{container_name}.service.d"
-        if override_dir.exists():
-            import shutil
-            shutil.rmtree(override_dir)
+        if await asyncio.to_thread(override_dir.exists):
+            await asyncio.to_thread(shutil.rmtree, override_dir)
             
-    async def _cleanup_partial_container(self, container_name: str):
+    async def _cleanup_partial_container(self, container_name: str) -> None:
         """Clean up partially created container."""
         logger.info(f"Cleaning up partial container {container_name}")
         
         # Clean up directory
         container_dir = self.machines_dir / container_name
-        if container_dir.exists():
-            import shutil
-            shutil.rmtree(container_dir)
+        if await asyncio.to_thread(container_dir.exists):
+            await asyncio.to_thread(shutil.rmtree, container_dir)
             logger.debug(f"Removed partial container directory: {container_dir}")
             
         # Clean up raw file
         container_raw = self.machines_dir / f"{container_name}.raw"
-        if container_raw.exists():
-            container_raw.unlink()
+        if await asyncio.to_thread(container_raw.exists):
+            await asyncio.to_thread(container_raw.unlink)
             logger.debug(f"Removed partial container raw file: {container_raw}")
             
         # Clean up any config files
         await self._cleanup_config_files(container_name)
             
-    async def _wait_for_ready(self, container_name: str, timeout: int = 30):
+    async def _wait_for_ready(self, container_name: str, timeout: int = 30) -> None:
         """Wait for container to be ready."""
         for i in range(timeout):
             try:
