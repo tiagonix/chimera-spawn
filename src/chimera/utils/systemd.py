@@ -115,68 +115,76 @@ class SystemdDBus:
         if self.bus:
             self.bus.disconnect()
             
-    async def reload_daemon(self):
-        """Reload systemd daemon configuration."""
+    async def _execute_fallback(
+        self,
+        dbus_method_name: str,
+        dbus_args: List[Any],
+        cli_cmd: List[str],
+        success_msg: str,
+        error_action: str
+    ):
+        """Execute a DBus method with CLI fallback."""
         if self.systemd:
             try:
-                await self.systemd.call_reload()
-                logger.debug("Reloaded systemd daemon")
+                method = getattr(self.systemd, dbus_method_name)
+                await method(*dbus_args)
+                logger.debug(success_msg)
+                return
             except Exception as e:
-                logger.error(f"Failed to reload systemd: {e}")
-                # Fall back to command
-                await run_command(["systemctl", "daemon-reload"])
+                logger.error(f"Failed to {error_action} via DBus: {e}")
+        
+        # Fall back to command (executed if systemd is None or if DBus failed)
+        await run_command(cli_cmd)
+
+    async def reload_daemon(self):
+        """Reload systemd daemon configuration."""
+        await self._execute_fallback(
+            "call_reload",
+            [],
+            ["systemctl", "daemon-reload"],
+            "Reloaded systemd daemon",
+            "reload systemd"
+        )
                 
     async def start_unit(self, unit_name: str):
         """Start a systemd unit."""
-        if self.systemd:
-            try:
-                await self.systemd.call_start_unit(unit_name, "replace")
-                logger.debug(f"Started unit {unit_name}")
-            except Exception as e:
-                logger.error(f"Failed to start unit via DBus: {e}")
-                # Fall back to command
-                await run_command(["systemctl", "start", unit_name])
-        else:
-            await run_command(["systemctl", "start", unit_name])
+        await self._execute_fallback(
+            "call_start_unit",
+            [unit_name, "replace"],
+            ["systemctl", "start", unit_name],
+            f"Started unit {unit_name}",
+            "start unit"
+        )
             
     async def stop_unit(self, unit_name: str):
         """Stop a systemd unit."""
-        if self.systemd:
-            try:
-                await self.systemd.call_stop_unit(unit_name, "replace")
-                logger.debug(f"Stopped unit {unit_name}")
-            except Exception as e:
-                logger.error(f"Failed to stop unit via DBus: {e}")
-                # Fall back to command
-                await run_command(["systemctl", "stop", unit_name])
-        else:
-            await run_command(["systemctl", "stop", unit_name])
+        await self._execute_fallback(
+            "call_stop_unit",
+            [unit_name, "replace"],
+            ["systemctl", "stop", unit_name],
+            f"Stopped unit {unit_name}",
+            "stop unit"
+        )
             
     async def enable_unit(self, unit_name: str):
         """Enable a systemd unit."""
-        if self.systemd:
-            try:
-                await self.systemd.call_enable_unit_files([unit_name], False, True)
-                logger.debug(f"Enabled unit {unit_name}")
-            except Exception as e:
-                logger.error(f"Failed to enable unit via DBus: {e}")
-                # Fall back to command
-                await run_command(["systemctl", "enable", unit_name])
-        else:
-            await run_command(["systemctl", "enable", unit_name])
+        await self._execute_fallback(
+            "call_enable_unit_files",
+            [[unit_name], False, True],
+            ["systemctl", "enable", unit_name],
+            f"Enabled unit {unit_name}",
+            "enable unit"
+        )
             
     async def disable_unit(self, unit_name: str):
         """Disable a systemd unit."""
-        if self.systemd:
-            try:
-                await self.systemd.call_disable_unit_files([unit_name], False)
-                logger.debug(f"Disabled unit {unit_name}")
-            except Exception as e:
-                logger.error(f"Failed to disable unit via DBus: {e}")
-                # Fall back to command
-                await run_command(["systemctl", "disable", unit_name])
-        else:
-            await run_command(["systemctl", "disable", unit_name])
+        await self._execute_fallback(
+            "call_disable_unit_files",
+            [[unit_name], False],
+            ["systemctl", "disable", unit_name],
+            f"Disabled unit {unit_name}",
+            "disable unit"
+        )
             
     async def get_unit_state(self, unit_name: str) -> str:
         """Get the active state of a unit."""
