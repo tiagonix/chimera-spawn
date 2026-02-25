@@ -8,7 +8,7 @@ from typing import Optional, TYPE_CHECKING
 
 from chimera.providers.base import BaseProvider, ProviderStatus
 from chimera.models.image import ImageSpec
-from chimera.utils.systemd import run_command, SystemdDBus
+from chimera.utils.systemd import run_command
 
 if TYPE_CHECKING:
     from chimera.providers.registry import ProviderRegistry
@@ -23,13 +23,10 @@ class ImageProvider(BaseProvider):
     def __init__(self):
         """Initialize image provider."""
         self.machines_dir: Optional[Path] = None
-        self.systemd_dbus: Optional[SystemdDBus] = None
         
     async def initialize(self, config, registry: "ProviderRegistry"):
         """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
-        self.systemd_dbus = SystemdDBus()
-        await self.systemd_dbus.connect()
         
     async def status(self, spec: ImageSpec) -> ProviderStatus:
         """Check if image exists."""
