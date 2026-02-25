@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from watchfiles import awatch
+
 from chimera.agent.config import ConfigManager
 from chimera.agent.engine import StateEngine
 from chimera.agent.ipc import IPCServer
@@ -120,18 +122,20 @@ class ChimeraAgent:
                 
     async def _config_watch_loop(self):
         """Watch for configuration changes."""
-        while not self.shutdown_event.is_set():
-            try:
-                changed = await self.config_manager.watch_for_changes()
-                if changed:
-                    logger.info("Configuration changed, reloading")
+        logger.info(f"Starting config watcher on {self.config_manager.config_dir}")
+        try:
+            async for changes in awatch(self.config_manager.config_dir, stop_event=self.shutdown_event):
+                logger.info("Configuration changed, reloading")
+                try:
                     await self.config_manager.load()
                     # Trigger immediate reconciliation
                     asyncio.create_task(self.state_engine.reconcile())
-            except Exception as e:
+                except Exception as e:
+                    logger.error(f"Failed to reload configuration: {e}")
+        except Exception as e:
+            # Handle cancellation gracefully
+            if not self.shutdown_event.is_set():
                 logger.error(f"Config watch error: {e}", exc_info=True)
-                
-            await asyncio.sleep(5)  # Check every 5 seconds
             
     def shutdown(self):
         """Signal shutdown."""
