@@ -24,7 +24,7 @@ class CommandResult:
 async def run_command(
     cmd: List[str],
     check: bool = True,
-    capture_output: bool = False,
+    capture_output: bool = True,
     timeout: Optional[int] = None,
     **kwargs
 ) -> CommandResult:

@@ -75,7 +75,7 @@ class ImageProvider(BaseProvider):
             await run_command(cmd, timeout=600)
             logger.info(f"Image {spec.name} pulled successfully")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to pull image {spec.name}: {e}")
+            logger.error(f"Failed to pull image {spec.name}: {e}. Stderr: {e.stderr}")
             raise
             
         # Clean up temporary files
@@ -98,7 +98,7 @@ class ImageProvider(BaseProvider):
             await run_command(["machinectl", "remove", spec.name])
             logger.info(f"Image {spec.name} removed successfully")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to remove image {spec.name}: {e}")
+            logger.error(f"Failed to remove image {spec.name}: {e}. Stderr: {e.stderr}")
             raise
             
     async def validate_spec(self, spec: ImageSpec) -> bool:
@@ -144,5 +144,5 @@ class ImageProvider(BaseProvider):
             logger.debug(f"Made image {image_name} read-only")
             
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to make image {image_name} read-only: {e}")
+            logger.error(f"Failed to make image {image_name} read-only: {e}. Stderr: {e.stderr}")
             raise

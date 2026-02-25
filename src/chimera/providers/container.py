@@ -112,7 +112,7 @@ class ContainerProvider(BaseProvider):
             ])
             logger.debug(f"Cloned image {spec.image} to container {spec.name}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to clone image: {e}")
+            logger.error(f"Failed to clone image: {e}. Stderr: {e.stderr}")
             raise
             
         # Only apply modifications for tar-based images
@@ -167,7 +167,7 @@ class ContainerProvider(BaseProvider):
             try:
                 await run_command(["machinectl", "remove", spec.name])
             except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to remove container: {e}")
+                logger.error(f"Failed to remove container: {e}. Stderr: {e.stderr}")
                 raise
         else:
             logger.debug(f"Container {spec.name} already absent (checking for residuals)")
