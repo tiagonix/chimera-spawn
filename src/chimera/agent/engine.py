@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, Set
 from datetime import datetime
 
 from chimera.agent.config import ConfigManager
-from chimera.providers import ProviderRegistry, ProviderStatus
+from chimera.providers import ProviderRegistry, ProviderStatus, BaseProvider
 from chimera.models.container import ContainerSpec
 
 
@@ -182,9 +182,12 @@ class StateEngine:
             if status:
                 statuses[name] = status
         return statuses
+
+    def _get_container_context(self, name: str) -> tuple[ContainerSpec, BaseProvider]:
+        """Resolve and enrich the container specification and provider.
         
-    async def execute_in_container(self, name: str, command: list[str]) -> Dict[str, Any]:
-        """Execute command in container."""
+        This helper standardizes the context setup for all container lifecycle operations.
+        """
         spec = self.config_manager.get_container_spec(name)
         if not spec:
             raise ValueError(f"Container {name} not found")
@@ -194,6 +197,11 @@ class StateEngine:
             raise RuntimeError("Container provider not available")
             
         self._enrich_container_spec(spec)
+        return spec, container_provider
+
+    async def execute_in_container(self, name: str, command: list[str]) -> Dict[str, Any]:
+        """Execute command in container."""
+        spec, container_provider = self._get_container_context(name)
         
         # Check container exists and is running
         status = await container_provider.status(spec)
@@ -208,15 +216,7 @@ class StateEngine:
         
     async def create_container(self, name: str):
         """Create a specific container."""
-        spec = self.config_manager.get_container_spec(name)
-        if not spec:
-            raise ValueError(f"Container {name} not found in configuration")
-            
-        container_provider = self.provider_registry.get_provider("container")
-        if not container_provider:
-            raise RuntimeError("Container provider not available")
-            
-        self._enrich_container_spec(spec)
+        spec, container_provider = self._get_container_context(name)
         
         # Validate spec before creation
         if not await container_provider.validate_spec(spec):
@@ -235,28 +235,12 @@ class StateEngine:
         
     async def stop_container(self, name: str):
         """Stop a specific container."""
-        spec = self.config_manager.get_container_spec(name)
-        if not spec:
-            raise ValueError(f"Container {name} not found")
-            
-        container_provider = self.provider_registry.get_provider("container")
-        if not container_provider:
-            raise RuntimeError("Container provider not available")
-            
-        self._enrich_container_spec(spec)
+        spec, container_provider = self._get_container_context(name)
         await container_provider.stop(spec)
         
     async def start_container(self, name: str):
         """Start a specific container."""
-        spec = self.config_manager.get_container_spec(name)
-        if not spec:
-            raise ValueError(f"Container {name} not found")
-            
-        container_provider = self.provider_registry.get_provider("container")
-        if not container_provider:
-            raise RuntimeError("Container provider not available")
-            
-        self._enrich_container_spec(spec)
+        spec, container_provider = self._get_container_context(name)
         
         # Validate before starting
         if not await container_provider.validate_spec(spec):
@@ -266,13 +250,5 @@ class StateEngine:
         
     async def remove_container(self, name: str):
         """Remove a specific container."""
-        spec = self.config_manager.get_container_spec(name)
-        if not spec:
-            raise ValueError(f"Container {name} not found")
-            
-        container_provider = self.provider_registry.get_provider("container")
-        if not container_provider:
-            raise RuntimeError("Container provider not available")
-            
-        self._enrich_container_spec(spec)
+        spec, container_provider = self._get_container_context(name)
         await container_provider.absent(spec)
