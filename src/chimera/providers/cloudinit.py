@@ -1,10 +1,12 @@
 """Cloud-init provider for container initialization."""
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, TYPE_CHECKING
 import json
 import io
+import shutil
 
 from ruamel.yaml import YAML
 
@@ -29,7 +31,7 @@ class CloudInitProvider(BaseProvider):
         self.yaml.preserve_quotes = True
         self.proxy_config = None
         
-    async def initialize(self, config, registry: "ProviderRegistry"):
+    async def initialize(self, config, registry: "ProviderRegistry") -> None:
         """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
         self.proxy_config = config.proxy
@@ -42,7 +44,10 @@ class CloudInitProvider(BaseProvider):
         container_path = self.machines_dir / spec.name
         seed_dir = container_path / "var/lib/cloud/seed/nocloud"
         
-        if seed_dir.exists():
+        # Check existence via thread to avoid blocking if FS is slow
+        exists = await asyncio.to_thread(seed_dir.exists)
+        
+        if exists:
             return ProviderStatus.PRESENT
         else:
             return ProviderStatus.ABSENT
@@ -57,9 +62,8 @@ class CloudInitProvider(BaseProvider):
         container_path = self.machines_dir / spec.name
         cloud_dir = container_path / "var/lib/cloud"
         
-        if cloud_dir.exists():
-            import shutil
-            shutil.rmtree(cloud_dir)
+        if await asyncio.to_thread(cloud_dir.exists):
+            await asyncio.to_thread(shutil.rmtree, cloud_dir)
             logger.debug(f"Removed cloud-init directory for {spec.name}")
             
     async def validate_spec(self, spec: ContainerSpec) -> bool:
@@ -70,7 +74,7 @@ class CloudInitProvider(BaseProvider):
         # Basic validation is handled by Pydantic
         return True
         
-    async def prepare(self, spec: ContainerSpec):
+    async def prepare(self, spec: ContainerSpec) -> None:
         """Prepare cloud-init configuration for container."""
         if not spec.cloud_init:
             logger.debug(f"No cloud-init config for container {spec.name}")
@@ -81,7 +85,7 @@ class CloudInitProvider(BaseProvider):
         
         # Create directory structure
         seed_dir = container_path / "var/lib/cloud/seed/nocloud"
-        seed_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: seed_dir.mkdir(parents=True, exist_ok=True))
         
         # Process meta-data
         meta_data = await self._prepare_meta_data(spec.name, cloud_init)
@@ -89,28 +93,29 @@ class CloudInitProvider(BaseProvider):
             meta_file = seed_dir / "meta-data"
             # Use StringIO to dump YAML
             stream = io.StringIO()
-            self.yaml.dump(meta_data, stream)
-            meta_file.write_text(stream.getvalue())
+            # ruamel.yaml.dump is blocking
+            await asyncio.to_thread(self.yaml.dump, meta_data, stream)
+            await asyncio.to_thread(meta_file.write_text, stream.getvalue())
             logger.debug(f"Created meta-data for {spec.name}")
             
         # Process user-data
         user_data = await self._prepare_user_data(cloud_init)
         if user_data:
             user_file = seed_dir / "user-data"
-            user_file.write_text(user_data)
+            await asyncio.to_thread(user_file.write_text, user_data)
             logger.debug(f"Created user-data for {spec.name}")
             
         # Process network-config
         network_config = cloud_init.network_config
         if network_config:
             network_file = seed_dir / "network-config"
-            network_file.write_text(network_config)
+            await asyncio.to_thread(network_file.write_text, network_config)
             logger.debug(f"Created network-config for {spec.name}")
         else:
             # Disable network configuration
             disable_file = container_path / "etc/cloud/cloud.cfg.d/99-disable-network-config.cfg"
-            disable_file.parent.mkdir(parents=True, exist_ok=True)
-            disable_file.write_text("network: {config: disabled}\n")
+            await asyncio.to_thread(lambda: disable_file.parent.mkdir(parents=True, exist_ok=True))
+            await asyncio.to_thread(disable_file.write_text, "network: {config: disabled}\n")
             logger.debug(f"Disabled network config for {spec.name}")
             
     async def _prepare_meta_data(self, container_name: str, cloud_init: CloudInitSpec) -> Dict[str, Any]:
