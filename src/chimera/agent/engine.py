@@ -54,6 +54,11 @@ class StateEngine:
             
         for name, spec in self.config_manager.images.items():
             try:
+                # Validate spec first
+                if not await image_provider.validate_spec(spec):
+                    logger.warning(f"Skipping invalid image spec: {name}")
+                    continue
+
                 status = await image_provider.status(spec)
                 
                 if status == ProviderStatus.ABSENT:
@@ -82,6 +87,11 @@ class StateEngine:
             try:
                 # Enrich spec with additional data
                 self._enrich_container_spec(spec)
+                
+                # Validate enriched spec
+                if not await container_provider.validate_spec(spec):
+                    logger.warning(f"Skipping invalid container spec: {name}")
+                    continue
                 
                 status = await container_provider.status(spec)
                 self._container_states[name] = status
@@ -208,6 +218,10 @@ class StateEngine:
             
         self._enrich_container_spec(spec)
         
+        # Validate spec before creation
+        if not await container_provider.validate_spec(spec):
+            raise ValueError(f"Invalid container configuration for {name}")
+
         # Ensure image exists first
         if spec._image_spec:
             image_provider = self.provider_registry.get_provider("image")
@@ -243,6 +257,11 @@ class StateEngine:
             raise RuntimeError("Container provider not available")
             
         self._enrich_container_spec(spec)
+        
+        # Validate before starting
+        if not await container_provider.validate_spec(spec):
+            raise ValueError(f"Invalid container configuration for {name}")
+
         await container_provider.start(spec)
         
     async def remove_container(self, name: str):
