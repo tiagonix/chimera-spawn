@@ -211,20 +211,14 @@ class SystemdDBus:
                 
             except Exception as e:
                 logger.debug(f"Failed to get unit state via DBus: {e}")
-                # Fall back to command
-                result = await run_command(
-                    ["systemctl", "is-active", unit_name],
-                    check=False,
-                    capture_output=True
-                )
-                return result.stdout.strip()
-        else:
-            result = await run_command(
-                ["systemctl", "is-active", unit_name],
-                check=False,
-                capture_output=True
-            )
-            return result.stdout.strip()
+        
+        # Fall back to command (executed if self.systemd is None or exception occurred)
+        result = await run_command(
+            ["systemctl", "is-active", unit_name],
+            check=False,
+            capture_output=True
+        )
+        return result.stdout.strip()
             
     async def list_machines(self) -> List[Dict[str, Any]]:
         """List all machines."""
