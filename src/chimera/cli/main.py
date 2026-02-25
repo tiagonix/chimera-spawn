@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Callable, Any
 
 import typer
 from rich.console import Console
@@ -38,105 +38,76 @@ app = typer.Typer(
 console = Console()
 
 
+def _run_cli_command(handler: Callable[..., Any], socket: Optional[str], **kwargs: Any):
+    """Helper to run a CLI command with an IPC client and error handling."""
+    try:
+        client = IPCClient(socket_path=socket)
+        handler(client, **kwargs)
+    except IPCError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from e
+
+
 @app.command("list")
 def list_command(
     resource_type: Optional[str] = typer.Argument(
-        None,
-        help="Resource type to list (images, containers, profiles)"
+        None, help="Resource type to list (images, containers, profiles)"
     ),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """List resources (images, containers, profiles)."""
-    try:
-        client = IPCClient(socket_path=socket)
-        list_resources(client, resource_type)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(list_resources, socket=socket, resource_type=resource_type)
 
 
 @app.command("spawn")
 def spawn_command(
-    name: Optional[str] = typer.Argument(
-        None,
-        help="Container name to spawn"
-    ),
-    all: bool = typer.Option(
-        False,
-        "--all",
-        help="Spawn all configured containers"
-    ),
+    name: Optional[str] = typer.Argument(None, help="Container name to spawn"),
+    all: bool = typer.Option(False, "--all", help="Spawn all configured containers"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Create and start container(s)."""
     if not name and not all:
         console.print("[red]Error:[/red] Specify container name or use --all")
         raise typer.Exit(1)
-        
-    try:
-        client = IPCClient(socket_path=socket)
-        spawn_container(client, name, all)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(spawn_container, socket=socket, name=name, all_containers=all)
 
 
 @app.command("stop")
 def stop_command(
     name: str = typer.Argument(..., help="Container name"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Stop a running container."""
-    try:
-        client = IPCClient(socket_path=socket)
-        stop_container(client, name)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(stop_container, socket=socket, name=name)
 
 
 @app.command("start")
 def start_command(
     name: str = typer.Argument(..., help="Container name"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Start a stopped container."""
-    try:
-        client = IPCClient(socket_path=socket)
-        start_container(client, name)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(start_container, socket=socket, name=name)
 
 
 @app.command("restart")
 def restart_command(
     name: str = typer.Argument(..., help="Container name"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Restart a container."""
-    try:
-        client = IPCClient(socket_path=socket)
+
+    def _restart_handler(client: IPCClient, name: str):
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -146,25 +117,20 @@ def restart_command(
             stop_container(client, name, quiet=True)
             start_container(client, name, quiet=True)
             progress.update(task, completed=True)
-            
+
         console.print(f"[green]✓[/green] Container {name} restarted")
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+
+    _run_cli_command(_restart_handler, socket=socket, name=name)
 
 
 @app.command("remove")
 def remove_command(
     name: str = typer.Argument(..., help="Container name"),
     force: bool = typer.Option(
-        False,
-        "--force", "-f",
-        help="Force removal without confirmation"
+        False, "--force", "-f", help="Force removal without confirmation"
     ),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Remove a container completely."""
@@ -172,13 +138,7 @@ def remove_command(
         confirm = typer.confirm(f"Remove container {name}?")
         if not confirm:
             raise typer.Abort()
-            
-    try:
-        client = IPCClient(socket_path=socket)
-        remove_container(client, name)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(remove_container, socket=socket, name=name)
 
 
 @app.command("exec")
@@ -186,27 +146,18 @@ def exec_command(
     name: str = typer.Argument(..., help="Container name"),
     command: List[str] = typer.Argument(..., help="Command to execute"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Execute command in container."""
-    try:
-        client = IPCClient(socket_path=socket)
-        exec_in_container(client, name, command)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(exec_in_container, socket=socket, name=name, command=command)
 
 
 @app.command("shell")
 def shell_command(
     name: str = typer.Argument(..., help="Container name"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Open interactive shell in container."""
@@ -226,35 +177,21 @@ app.add_typer(image_app, name="image")
 def image_pull_command(
     name: str = typer.Argument(..., help="Image name to pull"),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Pull a container image."""
-    try:
-        client = IPCClient(socket_path=socket)
-        pull_image(client, name)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(pull_image, socket=socket, name=name)
 
 
 @image_app.command("list")
 def image_list_command(
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """List available images."""
-    try:
-        client = IPCClient(socket_path=socket)
-        list_resources(client, "images")
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(list_resources, socket=socket, resource_type="images")
 
 
 # Profile subcommands
@@ -265,40 +202,25 @@ app.add_typer(profile_app, name="profile")
 @profile_app.command("list")
 def profile_list_command(
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """List available profiles."""
-    try:
-        client = IPCClient(socket_path=socket)
-        list_resources(client, "profiles")
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(list_resources, socket=socket, resource_type="profiles")
 
 
 # System commands
 @app.command("status")
 def status_command(
     container: Optional[str] = typer.Argument(
-        None,
-        help="Show status for specific container"
+        None, help="Show status for specific container"
     ),
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Show overall system status."""
-    try:
-        client = IPCClient(socket_path=socket)
-        show_status(client, container)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(show_status, socket=socket, container=container)
 
 
 # Config subcommands
@@ -309,18 +231,11 @@ app.add_typer(config_app, name="config")
 @config_app.command("validate")
 def config_validate_command(
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Validate configuration files."""
-    try:
-        client = IPCClient(socket_path=socket)
-        validate_config(client)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(validate_config, socket=socket)
 
 
 # Agent subcommands
@@ -331,35 +246,21 @@ app.add_typer(agent_app, name="agent")
 @agent_app.command("status")
 def agent_status_command(
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Show agent status."""
-    try:
-        client = IPCClient(socket_path=socket)
-        agent_status(client)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(agent_status, socket=socket)
 
 
 @agent_app.command("reload")
 def agent_reload_command(
     socket: Optional[str] = typer.Option(
-        None,
-        "--socket", "-s",
-        help="Agent socket path"
+        None, "--socket", "-s", help="Agent socket path"
     ),
 ):
     """Reload agent configuration."""
-    try:
-        client = IPCClient(socket_path=socket)
-        agent_reload(client)
-    except IPCError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(agent_reload, socket=socket)
 
 
 def main():
