@@ -320,6 +320,40 @@ class IPCServer:
         # Reload configuration to validate
         try:
             await self.config_manager.load()
+            
+            # Perform deep validation using providers
+            errors = []
+            
+            # Validate Images
+            image_provider = self.state_engine.provider_registry.get_provider("image")
+            if image_provider:
+                for name, spec in self.config_manager.images.items():
+                    if not await image_provider.validate_spec(spec):
+                        errors.append(f"Invalid image {name}")
+            
+            # Validate Profiles
+            profile_provider = self.state_engine.provider_registry.get_provider("profile")
+            if profile_provider:
+                for name, spec in self.config_manager.profiles.items():
+                    if not await profile_provider.validate_spec(spec):
+                        errors.append(f"Invalid profile {name}")
+                        
+            # Validate Containers
+            container_provider = self.state_engine.provider_registry.get_provider("container")
+            if container_provider:
+                for name, spec in self.config_manager.containers.items():
+                    # Manually enrich spec for validation
+                    self.state_engine._enrich_container_spec(spec)
+                    
+                    if not await container_provider.validate_spec(spec):
+                        errors.append(f"Invalid container {name}")
+                        
+            if errors:
+                return {
+                    "valid": False,
+                    "error": "; ".join(errors),
+                }
+
             return {
                 "valid": True,
                 "images": len(self.config_manager.images),
