@@ -4,11 +4,9 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
-import hashlib
 
 from ruamel.yaml import YAML
 from pydantic import ValidationError
-from watchfiles import awatch
 
 from chimera.models.config import ChimeraConfig
 from chimera.models.container import ContainerSpec
@@ -32,7 +30,6 @@ class ConfigManager:
         self.profiles: Dict[str, ProfileSpec] = {}
         self.cloud_init_templates: Dict[str, Dict[str, Any]] = {}
         self.containers: Dict[str, ContainerSpec] = {}
-        self._config_hashes: Dict[str, str] = {}
         
     async def load(self):
         """Load all configuration files."""
@@ -142,27 +139,11 @@ class ConfigManager:
                 logger.error(f"Error loading {yaml_file}: {e}")
                 
     async def _read_yaml(self, file_path: Path) -> Dict[str, Any]:
-        """Read and parse YAML file."""
-        content = file_path.read_text()
-        # Store hash for change detection
-        self._config_hashes[str(file_path)] = hashlib.md5(content.encode()).hexdigest()
-        return self.yaml.load(content)
-        
-    async def watch_for_changes(self) -> bool:
-        """Check if configuration files have changed."""
-        changed = False
-        
-        # Check all YAML files
-        for yaml_file in self.config_dir.rglob("*.yaml"):
-            content = yaml_file.read_text()
-            current_hash = hashlib.md5(content.encode()).hexdigest()
+        """Read and parse YAML file asynchronously."""
+        def _read_and_parse():
+            return self.yaml.load(file_path.read_text())
             
-            if str(yaml_file) not in self._config_hashes:
-                changed = True
-            elif self._config_hashes[str(yaml_file)] != current_hash:
-                changed = True
-                
-        return changed
+        return await asyncio.to_thread(_read_and_parse)
         
     def get_container_spec(self, name: str) -> Optional[ContainerSpec]:
         """Get container specification by name."""
