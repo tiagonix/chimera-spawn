@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+import pty
+import shlex
 import socket
 import struct
 from pathlib import Path
@@ -27,6 +29,8 @@ PRIVILEGED_COMMANDS = {
     "reconcile",
     "reload",
     "image_pull",
+    "stream_exec",
+    "stream_shell",
 }
 
 
@@ -98,9 +102,9 @@ class IPCServer:
         logger.debug(f"Client connected: {client_addr}, UID: {client_uid}")
         
         try:
-            # Read request with timeout to prevent dead connection hangs
+            # Use readline to support stream handshakes
             try:
-                data = await asyncio.wait_for(reader.read(65536), timeout=5.0)  # 64KB max request size
+                data = await asyncio.wait_for(reader.readline(), timeout=5.0)
             except asyncio.TimeoutError:
                 logger.warning(f"Client {client_addr} timed out sending request")
                 return
@@ -109,13 +113,28 @@ class IPCServer:
                 return
                 
             request = json.loads(data.decode())
-            logger.debug(f"Received request: {request.get('command')}")
+            command = request.get("command")
+            logger.debug(f"Received request: {command}")
             
-            # Process request with authorization check
+            # Intercept stream upgrades
+            if command in ("stream_exec", "stream_shell"):
+                if client_uid != 0:
+                    logger.warning(f"Denied stream command '{command}' for non-root user (UID: {client_uid})")
+                    error_response = {"success": False, "error": "Permission denied: Root privileges required"}
+                    writer.write(json.dumps(error_response).encode() + b"\n")
+                    await writer.drain()
+                    return
+                    
+                writer.write(b'{"success": true}\n')
+                await writer.drain()
+                await self._handle_stream(request.get("args", {}), reader, writer)
+                return
+            
+            # Process normal request
             response = await self._process_request(request, client_uid)
             
-            # Send response
-            response_data = json.dumps(response).encode()
+            # Send response (appending \n for safety/protocol consistency)
+            response_data = json.dumps(response).encode() + b"\n"
             writer.write(response_data)
             await writer.drain()
             
@@ -125,7 +144,7 @@ class IPCServer:
                 "success": False,
                 "error": "Invalid JSON request",
             }
-            writer.write(json.dumps(error_response).encode())
+            writer.write(json.dumps(error_response).encode() + b"\n")
             await writer.drain()
             
         except Exception as e:
@@ -134,13 +153,74 @@ class IPCServer:
                 "success": False,
                 "error": str(e),
             }
-            writer.write(json.dumps(error_response).encode())
+            writer.write(json.dumps(error_response).encode() + b"\n")
             await writer.drain()
             
         finally:
             writer.close()
             await writer.wait_closed()
             
+    async def _handle_stream(self, args: Dict[str, Any], reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        """Handle bidirectional streaming with a PTY for interactive sessions."""
+        container_name = args.get("name")
+        command = args.get("command")
+        
+        if not container_name:
+            return
+            
+        master, slave = pty.openpty()
+        
+        try:
+            # Build command
+            cmd = ["machinectl", "shell", container_name]
+            if command:
+                cmd.extend(["/bin/bash", "-c", shlex.join(command)])
+                
+            # Spawn process with PTY slave
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=slave, stdout=slave, stderr=slave
+            )
+        finally:
+            # Parent does not need slave. Close it so EOF triggers when proc exits.
+            os.close(slave)
+            
+        loop = asyncio.get_running_loop()
+        
+        async def pump_read():
+            try:
+                while True:
+                    data = await loop.run_in_executor(None, os.read, master, 4096)
+                    if not data:
+                        break
+                    writer.write(data)
+                    await writer.drain()
+            except OSError:
+                pass # PTY closed
+                
+        async def pump_write():
+            try:
+                while True:
+                    data = await reader.read(4096)
+                    if not data:
+                        break
+                    await loop.run_in_executor(None, os.write, master, data)
+            except (OSError, asyncio.CancelledError):
+                pass
+                
+        task1 = asyncio.create_task(pump_read())
+        task2 = asyncio.create_task(pump_write())
+        
+        await proc.wait()
+        
+        # Cleanup
+        task1.cancel()
+        task2.cancel()
+        try:
+            os.close(master)
+        except OSError:
+            pass
+
     async def _process_request(self, request: Dict[str, Any], client_uid: Optional[int]) -> Dict[str, Any]:
         """Process IPC request and return response."""
         command = request.get("command")
@@ -303,7 +383,7 @@ class IPCServer:
         return {"container": container_name, "removed": True}
         
     async def _handle_exec(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle exec request."""
+        """Handle exec request (non-streaming, batch mode)."""
         container_name = args.get("name")
         command = args.get("command")
         
@@ -374,7 +454,7 @@ class IPCServer:
                     
                     if not await container_provider.validate_spec(spec):
                         errors.append(f"Invalid container {name}")
-                        
+
             if errors:
                 return {
                     "valid": False,
