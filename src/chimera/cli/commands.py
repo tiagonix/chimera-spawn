@@ -178,6 +178,17 @@ def start_container(client: IPCClient, name: str, quiet: bool = False):
     )
 
 
+def restart_container(client: IPCClient, name: str):
+    """Restart a container."""
+    _run_action(
+        client,
+        description=f"Restarting container {name}...",
+        command="restart",
+        args={"name": name},
+        success_msg=f"[green]✓[/green] Container {name} restarted",
+    )
+
+
 def remove_container(client: IPCClient, name: str):
     """Remove a container."""
     _run_action(

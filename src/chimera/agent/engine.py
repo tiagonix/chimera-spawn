@@ -275,6 +275,12 @@ class StateEngine:
 
         await container_provider.start(spec)
         
+    async def restart_container(self, name: str):
+        """Restart a specific container."""
+        logger.info(f"Restarting container {name}")
+        await self.stop_container(name)
+        await self.start_container(name)
+
     async def remove_container(self, name: str):
         """Remove a specific container."""
         spec, container_provider = self._get_container_context(name)
