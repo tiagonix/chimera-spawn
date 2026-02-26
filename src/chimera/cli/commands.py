@@ -1,9 +1,12 @@
 """Command implementations for CLI."""
 
+import asyncio
+import json
 import os
+import shutil
+import signal
 import sys
-import select
-import socket
+import fcntl
 import termios
 import tty
 from typing import Optional, List, Dict, Any
@@ -203,56 +206,110 @@ def remove_container(client: IPCClient, name: str):
     )
 
 
-def _proxy_terminal(sock: socket.socket):
-    """Proxy local terminal to the raw socket, enabling true interactive streams."""
+async def _proxy_terminal(ws):
+    """Async proxy local terminal to WebSocket with resize support."""
     fd = sys.stdin.fileno()
+    loop = asyncio.get_running_loop()
     old_settings = termios.tcgetattr(fd) if sys.stdin.isatty() else None
+    old_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
     
+    # Queue for stdin data
+    stdin_queue = asyncio.Queue()
+    
+    def on_stdin():
+        try:
+            data = os.read(fd, 4096)
+            if data:
+                stdin_queue.put_nowait(data)
+            else:
+                stdin_queue.put_nowait(None) # EOF
+        except OSError:
+            stdin_queue.put_nowait(None)
+
+    def send_resize(*args):
+        cols, rows = shutil.get_terminal_size()
+        payload = json.dumps({"type": "resize", "cols": cols, "rows": rows})
+        # Schedule send on the event loop since signal handler is sync
+        asyncio.run_coroutine_threadsafe(ws.send(payload), loop)
+        
     try:
         if old_settings:
             tty.setraw(fd)
+            # Set non-blocking to prevent event loop freeze
+            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+            loop.add_reader(fd, on_stdin)
+            signal.signal(signal.SIGWINCH, send_resize)
+            await ws.send(json.dumps({
+                "type": "resize", 
+                "cols": shutil.get_terminal_size().columns, 
+                "rows": shutil.get_terminal_size().lines
+            }))
             
-        sock.setblocking(False)
-        
-        while True:
-            r, _, _ = select.select([sys.stdin, sock], [], [])
-            
-            # Data from the agent (container output)
-            if sock in r:
-                try:
-                    data = sock.recv(4096)
-                except BlockingIOError:
-                    continue
-                if not data:
-                    break
-                os.write(sys.stdout.fileno(), data)
+        async def pump_read():
+            """Read from websocket and write to stdout."""
+            try:
+                async for msg in ws:
+                    if isinstance(msg, str):
+                        pass # Ignore text frames
+                    else:
+                        os.write(sys.stdout.fileno(), msg)
+            except Exception:
+                pass
                 
-            # Data from the user (keyboard input)
-            if sys.stdin in r:
-                data = os.read(fd, 4096)
-                if not data:
-                    break
-                try:
-                    sock.sendall(data)
-                except BlockingIOError:
-                    # Ignore blocked local socket writes
-                    pass
+        async def pump_write():
+            """Read from stdin queue and write to websocket."""
+            try:
+                while True:
+                    data = await stdin_queue.get()
+                    if data is None:
+                        break
+                    await ws.send(data)
+            except Exception:
+                pass
+                
+        # Run pumps concurrently
+        read_task = asyncio.create_task(pump_read())
+        write_task = asyncio.create_task(pump_write())
+        
+        # Wait for either to finish (connection closed or EOF)
+        done, pending = await asyncio.wait(
+            [read_task, write_task], 
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # Graceful cleanup of pending tasks
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+            
     finally:
         if old_settings:
+            loop.remove_reader(fd)
+            signal.signal(signal.SIGWINCH, signal.SIG_DFL)
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        sock.close()
-
+            # Restore original flags (blocking/non-blocking)
+            fcntl.fcntl(fd, fcntl.F_SETFL, old_flags)
+        # Note: ws.close() is handled by the context manager in the caller
 
 def exec_in_container(client: IPCClient, name: str, command: List[str]):
-    """Execute command in container via interactive IPC stream."""
-    sock = client.stream_request("stream_exec", {"name": name, "command": command})
-    _proxy_terminal(sock)
+    """Execute command in container via WebSocket."""
+    async def _run():
+        params = {"name": name, "command": json.dumps(command)}
+        async with client.stream_connect("/api/v1/stream/exec", params) as ws:
+            await _proxy_terminal(ws)
+            
+    asyncio.run(_run())
 
 
 def shell_in_container(client: IPCClient, name: str):
-    """Open interactive shell in container via interactive IPC stream."""
-    sock = client.stream_request("stream_shell", {"name": name})
-    _proxy_terminal(sock)
+    """Open interactive shell in container via WebSocket."""
+    async def _run():
+        params = {"name": name}
+        async with client.stream_connect("/api/v1/stream/shell", params) as ws:
+            await _proxy_terminal(ws)
+            
+    asyncio.run(_run())
 
 
 def pull_image(client: IPCClient, name: str):

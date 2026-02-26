@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, validator
 class AgentConfig(BaseModel):
     """Agent configuration."""
     socket_path: str = Field(default="./state/chimera-agent.sock")
+    host: Optional[str] = Field(default=None, description="TCP host to bind (e.g., 0.0.0.0)")
+    port: int = Field(default=8080, description="TCP port to bind")
     reconciliation_interval: int = Field(default=30, ge=5)
     log_level: str = Field(default="INFO")
     config_dir: str = Field(default="./configs")

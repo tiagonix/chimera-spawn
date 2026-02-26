@@ -39,10 +39,10 @@ app = typer.Typer(
 console = Console()
 
 
-def _run_cli_command(handler: Callable[..., Any], socket: Optional[str], **kwargs: Any):
+def _run_cli_command(handler: Callable[..., Any], socket: Optional[str], host: Optional[str], **kwargs: Any):
     """Helper to run a CLI command with an IPC client and error handling."""
     try:
-        client = IPCClient(socket_path=socket)
+        client = IPCClient(socket_path=socket, host=host)
         handler(client, **kwargs)
     except IPCError as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -57,9 +57,12 @@ def list_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """List resources (images, containers, profiles)."""
-    _run_cli_command(list_resources, socket=socket, resource_type=resource_type)
+    _run_cli_command(list_resources, socket=socket, host=host, resource_type=resource_type)
 
 
 @app.command("spawn")
@@ -69,12 +72,15 @@ def spawn_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Create and start container(s)."""
     if not name and not all:
         console.print("[red]Error:[/red] Specify container name or use --all")
         raise typer.Exit(1)
-    _run_cli_command(spawn_container, socket=socket, name=name, all_containers=all)
+    _run_cli_command(spawn_container, socket=socket, host=host, name=name, all_containers=all)
 
 
 @app.command("stop")
@@ -83,9 +89,12 @@ def stop_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Stop a running container."""
-    _run_cli_command(stop_container, socket=socket, name=name)
+    _run_cli_command(stop_container, socket=socket, host=host, name=name)
 
 
 @app.command("start")
@@ -94,9 +103,12 @@ def start_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Start a stopped container."""
-    _run_cli_command(start_container, socket=socket, name=name)
+    _run_cli_command(start_container, socket=socket, host=host, name=name)
 
 
 @app.command("restart")
@@ -105,9 +117,12 @@ def restart_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Restart a container."""
-    _run_cli_command(restart_container, socket=socket, name=name)
+    _run_cli_command(restart_container, socket=socket, host=host, name=name)
 
 
 @app.command("remove")
@@ -119,13 +134,16 @@ def remove_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Remove a container completely."""
     if not force:
         confirm = typer.confirm(f"Remove container {name}?")
         if not confirm:
             raise typer.Abort()
-    _run_cli_command(remove_container, socket=socket, name=name)
+    _run_cli_command(remove_container, socket=socket, host=host, name=name)
 
 
 @app.command("exec")
@@ -135,9 +153,12 @@ def exec_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Execute command in container."""
-    _run_cli_command(exec_in_container, socket=socket, name=name, command=command)
+    _run_cli_command(exec_in_container, socket=socket, host=host, name=name, command=command)
 
 
 @app.command("shell")
@@ -146,9 +167,12 @@ def shell_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Open interactive shell in container."""
-    _run_cli_command(shell_in_container, socket=socket, name=name)
+    _run_cli_command(shell_in_container, socket=socket, host=host, name=name)
 
 
 # Image subcommands
@@ -162,9 +186,12 @@ def image_pull_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Pull a container image."""
-    _run_cli_command(pull_image, socket=socket, name=name)
+    _run_cli_command(pull_image, socket=socket, host=host, name=name)
 
 
 @image_app.command("list")
@@ -172,9 +199,12 @@ def image_list_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """List available images."""
-    _run_cli_command(list_resources, socket=socket, resource_type="images")
+    _run_cli_command(list_resources, socket=socket, host=host, resource_type="images")
 
 
 # Profile subcommands
@@ -187,9 +217,12 @@ def profile_list_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """List available profiles."""
-    _run_cli_command(list_resources, socket=socket, resource_type="profiles")
+    _run_cli_command(list_resources, socket=socket, host=host, resource_type="profiles")
 
 
 # System commands
@@ -201,9 +234,12 @@ def status_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Show overall system status."""
-    _run_cli_command(show_status, socket=socket, container=container)
+    _run_cli_command(show_status, socket=socket, host=host, container=container)
 
 
 # Config subcommands
@@ -216,9 +252,12 @@ def config_validate_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Validate configuration files."""
-    _run_cli_command(validate_config, socket=socket)
+    _run_cli_command(validate_config, socket=socket, host=host)
 
 
 # Agent subcommands
@@ -231,9 +270,12 @@ def agent_status_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Show agent status."""
-    _run_cli_command(agent_status, socket=socket)
+    _run_cli_command(agent_status, socket=socket, host=host)
 
 
 @agent_app.command("reload")
@@ -241,9 +283,12 @@ def agent_reload_command(
     socket: Optional[str] = typer.Option(
         None, "--socket", "-s", help="Agent socket path"
     ),
+    host: Optional[str] = typer.Option(
+        None, "--host", "-H", help="Agent host:port (e.g. localhost:8080)"
+    ),
 ):
     """Reload agent configuration."""
-    _run_cli_command(agent_reload, socket=socket)
+    _run_cli_command(agent_reload, socket=socket, host=host)
 
 
 def main():
