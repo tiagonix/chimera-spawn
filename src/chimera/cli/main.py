@@ -150,7 +150,12 @@ def exec_command(
     ),
 ):
     """Execute command in container."""
-    _run_cli_command(exec_in_container, socket=socket, name=name, command=command)
+    # Execute directly without IPC wrapper to preserve TTY
+    try:
+        exec_in_container(name=name, command=command)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 @app.command("shell")
