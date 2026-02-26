@@ -88,16 +88,6 @@ class TestIPCServer:
         cont_provider = mock_state_engine.provider_registry.get_provider("container")
         cont_provider.validate_spec.return_value = False
         
-        # Mock enrichment to avoid AttributeError if code tries to access properties
-        # In the real implementation, _enrich_container_spec handles this
-        
-        # We need to ensure _enrich_container_spec is available or mocked if called
-        # The IPC implementation will call config_manager.load(), then validate directly via providers
-        # Note: Enrichment happens in StateEngine usually. 
-        # For IPC validate, we need to ensure we don't crash on unenriched specs if providers expect them.
-        # ContainerProvider.validate_spec checks _image_spec.
-        # Let's see how we implement IPC validate. If we manually enrich or rely on pre-enrichment.
-        
         # Mock the engine to handle enrichment if called, or assume implementation calls it
         mock_state_engine._enrich_container_spec = Mock()
 
@@ -105,3 +95,53 @@ class TestIPCServer:
         
         assert response["valid"] is False
         assert "Invalid container bad-cont" in response["error"]
+
+    async def test_privileged_command_denied_non_root(self, mock_state_engine, mock_config_manager):
+        """Test that privileged commands are denied for non-root users."""
+        server = IPCServer(Path("/tmp/sock"), mock_state_engine, mock_config_manager)
+        
+        # Privileged command
+        request = {"command": "spawn", "args": {"name": "test"}}
+        
+        # Test with None UID (unknown user)
+        response = await server._process_request(request, client_uid=None)
+        assert response["success"] is False
+        assert "Permission denied" in response["error"]
+        
+        # Test with non-root UID (e.g., 1000)
+        response = await server._process_request(request, client_uid=1000)
+        assert response["success"] is False
+        assert "Permission denied" in response["error"]
+
+    async def test_privileged_command_allowed_root(self, mock_state_engine, mock_config_manager):
+        """Test that privileged commands are allowed for root user."""
+        server = IPCServer(Path("/tmp/sock"), mock_state_engine, mock_config_manager)
+        
+        # Privileged command
+        request = {"command": "spawn", "args": {"name": "test"}}
+        
+        # Mock the handler to succeed immediately
+        server._handle_spawn = AsyncMock(return_value={"created": True})
+        
+        # Test with UID 0 (root)
+        response = await server._process_request(request, client_uid=0)
+        
+        assert response["success"] is True
+        assert response["data"]["created"] is True
+        server._handle_spawn.assert_called_once()
+
+    async def test_non_privileged_command_allowed_any(self, mock_state_engine, mock_config_manager):
+        """Test that non-privileged commands are allowed for any user."""
+        server = IPCServer(Path("/tmp/sock"), mock_state_engine, mock_config_manager)
+        
+        # Non-privileged command
+        request = {"command": "status", "args": {}}
+        
+        # Mock the handler
+        server._handle_status = AsyncMock(return_value={"status": "ok"})
+        
+        # Test with non-root UID
+        response = await server._process_request(request, client_uid=1000)
+        
+        assert response["success"] is True
+        assert response["data"]["status"] == "ok"

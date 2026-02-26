@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+import shlex
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -14,6 +15,7 @@ from chimera.cli.client import IPCClient
 
 
 console = Console()
+stderr_console = Console(stderr=True)
 
 
 def _run_action(
@@ -187,21 +189,20 @@ def remove_container(client: IPCClient, name: str):
     )
 
 
-def exec_in_container(client: IPCClient, name: str, command: List[str]):
-    """Execute command in container."""
-    response = client.request("exec", {"name": name, "command": command})
+def exec_in_container(name: str, command: List[str]):
+    """Execute command in container locally to preserve TTY."""
+    # `machinectl shell` requires an absolute path for the executable.
+    # To run commands like `apt` which rely on $PATH, we must invoke the
+    # container's own shell and pass the user's command to it.
+    # `shlex.join` safely quotes the arguments into a single string.
+    safe_command = shlex.join(command)
+    cmd = ["machinectl", "shell", name, "/bin/bash", "-c", safe_command]
     
-    exit_code = response.get("exit_code", 0)
-    stdout = response.get("stdout", "")
-    stderr = response.get("stderr", "")
+    # subprocess.run will stream output to stdout/stderr by default
+    result = subprocess.run(cmd, check=False)
     
-    if stdout:
-        console.print(stdout, end="")
-    if stderr:
-        console.print(stderr, style="red", file=sys.stderr, end="")
-        
-    if exit_code != 0:
-        raise SystemExit(exit_code)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
 
 
 def shell_in_container(name: str):

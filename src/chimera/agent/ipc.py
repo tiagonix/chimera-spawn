@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+import socket
+import struct
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -76,9 +78,18 @@ class IPCServer:
         
         # Get peer credentials to identify the user
         try:
-            # peercred is a tuple of (pid, uid, gid)
-            creds = writer.get_extra_info('peercred')
-            client_uid = creds[1] if creds else None
+            sock = writer.get_extra_info('socket')
+            if sock:
+                # Retrieve SO_PEERCRED from the underlying socket
+                # struct ucred { pid_t pid; uid_t uid; gid_t gid; };
+                # All fields are standard integers (4 bytes each on 32/64-bit Linux usually, but 'i' handles C int)
+                # calcsize('3i') ensures we get the right buffer size
+                creds = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
+                pid, uid, gid = struct.unpack('3i', creds)
+                client_uid = uid
+            else:
+                logger.warning("Could not retrieve socket object from transport")
+                client_uid = None
         except Exception as e:
             logger.warning(f"Failed to get peer credentials: {e}")
             client_uid = None
