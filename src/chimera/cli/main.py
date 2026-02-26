@@ -15,6 +15,7 @@ from chimera.cli.commands import (
     spawn_container,
     stop_container,
     start_container,
+    restart_container,
     remove_container,
     exec_in_container,
     shell_in_container,
@@ -106,21 +107,7 @@ def restart_command(
     ),
 ):
     """Restart a container."""
-
-    def _restart_handler(client: IPCClient, name: str):
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task(f"Restarting {name}...", total=None)
-            stop_container(client, name, quiet=True)
-            start_container(client, name, quiet=True)
-            progress.update(task, completed=True)
-
-        console.print(f"[green]✓[/green] Container {name} restarted")
-
-    _run_cli_command(_restart_handler, socket=socket, name=name)
+    _run_cli_command(restart_container, socket=socket, name=name)
 
 
 @app.command("remove")

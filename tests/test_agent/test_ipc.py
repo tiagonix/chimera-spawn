@@ -15,6 +15,7 @@ def mock_state_engine():
     """Create mock state engine."""
     engine = Mock()
     engine.provider_registry = Mock()
+    engine.restart_container = AsyncMock()
     
     # Setup mock providers
     image_provider = AsyncMock()
@@ -145,3 +146,14 @@ class TestIPCServer:
         
         assert response["success"] is True
         assert response["data"]["status"] == "ok"
+
+    async def test_handle_restart_success(self, mock_state_engine, mock_config_manager):
+        """Test the restart IPC handler calls the state engine."""
+        server = IPCServer(Path("/tmp/sock"), mock_state_engine, mock_config_manager)
+
+        # Call the handler for restart
+        result = await server._handle_restart({"name": "test-container"})
+
+        # Verify the state engine's restart method was called
+        mock_state_engine.restart_container.assert_awaited_once_with("test-container")
+        assert result == {"container": "test-container", "restarted": True}

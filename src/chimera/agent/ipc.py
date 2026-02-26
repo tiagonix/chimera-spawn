@@ -21,6 +21,7 @@ PRIVILEGED_COMMANDS = {
     "spawn",
     "stop",
     "start",
+    "restart",
     "remove",
     "exec",
     "reconcile",
@@ -160,6 +161,7 @@ class IPCServer:
             "spawn": self._handle_spawn,
             "stop": self._handle_stop,
             "start": self._handle_start,
+            "restart": self._handle_restart,
             "remove": self._handle_remove,
             "exec": self._handle_exec,
             "reconcile": self._handle_reconcile,
@@ -282,6 +284,15 @@ class IPCServer:
         await self.state_engine.start_container(container_name)
         return {"container": container_name, "started": True}
         
+    async def _handle_restart(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle restart request."""
+        container_name = args.get("name")
+        if not container_name:
+            raise ValueError("Container name required")
+            
+        await self.state_engine.restart_container(container_name)
+        return {"container": container_name, "restarted": True}
+
     async def _handle_remove(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle remove request."""
         container_name = args.get("name")
