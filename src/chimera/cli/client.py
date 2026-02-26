@@ -42,8 +42,8 @@ class IPCClient:
         try:
             sock.connect(str(self.socket_path))
             
-            # Send request
-            request_data = json.dumps(request).encode()
+            # Send request (append newline for line-delimited protocol)
+            request_data = json.dumps(request).encode() + b"\n"
             sock.sendall(request_data)
             sock.shutdown(socket.SHUT_WR)
             
@@ -75,3 +75,51 @@ class IPCClient:
             raise IPCError(f"Invalid response from agent: {e}")
         finally:
             sock.close()
+
+    def stream_request(self, command: str, args: Optional[Dict[str, Any]] = None) -> socket.socket:
+        """Send request to agent and return raw socket for streaming interactivity."""
+        if not self.socket_path.exists():
+            raise IPCError(f"Agent socket not found at {self.socket_path}")
+            
+        request = {
+            "command": command,
+            "args": args or {},
+        }
+        
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(10.0)
+        try:
+            sock.connect(str(self.socket_path))
+            
+            # Send request with newline
+            request_data = json.dumps(request).encode() + b"\n"
+            sock.sendall(request_data)
+            
+            # Read response single line character by character to avoid buffering raw stream data
+            response_data = b""
+            while True:
+                char = sock.recv(1)
+                if not char:
+                    break
+                response_data += char
+                if char == b"\n":
+                    break
+                    
+            if not response_data:
+                raise IPCError("Empty response from agent")
+                
+            response = json.loads(response_data.decode())
+            
+            if not response.get("success"):
+                error = response.get("error", "Unknown error")
+                raise IPCError(f"Agent error: {error}")
+            
+            # Disable timeout for raw streaming
+            sock.settimeout(None)
+            return sock
+            
+        except Exception as e:
+            sock.close()
+            if isinstance(e, IPCError):
+                raise
+            raise IPCError(f"Stream request failed: {e}")

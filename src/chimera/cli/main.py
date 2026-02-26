@@ -137,12 +137,7 @@ def exec_command(
     ),
 ):
     """Execute command in container."""
-    # Execute directly without IPC wrapper to preserve TTY
-    try:
-        exec_in_container(name=name, command=command)
-    except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(exec_in_container, socket=socket, name=name, command=command)
 
 
 @app.command("shell")
@@ -153,11 +148,7 @@ def shell_command(
     ),
 ):
     """Open interactive shell in container."""
-    try:
-        shell_in_container(name)
-    except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
+    _run_cli_command(shell_in_container, socket=socket, name=name)
 
 
 # Image subcommands

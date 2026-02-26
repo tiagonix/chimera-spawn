@@ -1,48 +1,45 @@
 """Tests for CLI command implementations."""
 
 import pytest
-import sys
-import shlex
-from unittest.mock import MagicMock, patch, call
-
-from chimera.cli.commands import exec_in_container
+from unittest.mock import MagicMock, patch
+from chimera.cli.commands import exec_in_container, shell_in_container
 
 
-class TestExecCommand:
-    """Tests for the exec_in_container command handler."""
+class TestStreamingCommands:
+    """Tests for the interactive stream-based commands."""
 
-    @patch("subprocess.run")
-    def test_exec_in_container_runs_subprocess(self, mock_run):
-        """Verify exec_in_container calls subprocess.run correctly."""
-        # Configure the mock to simulate success (returncode 0)
-        mock_run.return_value = MagicMock(returncode=0)
+    @patch("chimera.cli.commands._proxy_terminal")
+    def test_exec_in_container_uses_stream_request(self, mock_proxy):
+        """Verify exec_in_container calls stream_request and proxies terminal."""
+        mock_client = MagicMock()
+        mock_sock = MagicMock()
+        mock_client.stream_request.return_value = mock_sock
 
         command = ["ls", "-la", "/root"]
-        
-        # Call the function with command arguments
         exec_in_container(
+            client=mock_client,
             name="test-container",
             command=command,
         )
 
-        # Verify subprocess.run was called with the correct arguments,
-        # including the shell wrapper and shlex-joined command.
-        expected_cmd_str = shlex.join(command)
-        mock_run.assert_called_once_with(
-            ["machinectl", "shell", "test-container", "/bin/bash", "-c", expected_cmd_str],
-            check=False
+        mock_client.stream_request.assert_called_once_with(
+            "stream_exec", {"name": "test-container", "command": command}
+        )
+        mock_proxy.assert_called_once_with(mock_sock)
+
+    @patch("chimera.cli.commands._proxy_terminal")
+    def test_shell_in_container_uses_stream_request(self, mock_proxy):
+        """Verify shell_in_container calls stream_request and proxies terminal."""
+        mock_client = MagicMock()
+        mock_sock = MagicMock()
+        mock_client.stream_request.return_value = mock_sock
+
+        shell_in_container(
+            client=mock_client,
+            name="test-container",
         )
 
-    @patch("subprocess.run")
-    def test_exec_in_container_raises_on_failure(self, mock_run):
-        """Verify exec_in_container raises SystemExit on failure."""
-        # Mock a failed return code
-        mock_run.return_value = MagicMock(returncode=127)
-
-        with pytest.raises(SystemExit) as exc_info:
-            exec_in_container(
-                name="test-container",
-                command=["bad-command"],
-            )
-        
-        assert exc_info.value.code == 127
+        mock_client.stream_request.assert_called_once_with(
+            "stream_shell", {"name": "test-container"}
+        )
+        mock_proxy.assert_called_once_with(mock_sock)

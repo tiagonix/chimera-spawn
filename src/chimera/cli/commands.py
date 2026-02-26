@@ -1,8 +1,11 @@
 """Command implementations for CLI."""
 
-import subprocess
+import os
 import sys
-import shlex
+import select
+import socket
+import termios
+import tty
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -200,27 +203,56 @@ def remove_container(client: IPCClient, name: str):
     )
 
 
-def exec_in_container(name: str, command: List[str]):
-    """Execute command in container locally to preserve TTY."""
-    # `machinectl shell` requires an absolute path for the executable.
-    # To run commands like `apt` which rely on $PATH, we must invoke the
-    # container's own shell and pass the user's command to it.
-    # `shlex.join` safely quotes the arguments into a single string.
-    safe_command = shlex.join(command)
-    cmd = ["machinectl", "shell", name, "/bin/bash", "-c", safe_command]
+def _proxy_terminal(sock: socket.socket):
+    """Proxy local terminal to the raw socket, enabling true interactive streams."""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd) if sys.stdin.isatty() else None
     
-    # subprocess.run will stream output to stdout/stderr by default
-    result = subprocess.run(cmd, check=False)
-    
-    if result.returncode != 0:
-        raise SystemExit(result.returncode)
+    try:
+        if old_settings:
+            tty.setraw(fd)
+            
+        sock.setblocking(False)
+        
+        while True:
+            r, _, _ = select.select([sys.stdin, sock], [], [])
+            
+            # Data from the agent (container output)
+            if sock in r:
+                try:
+                    data = sock.recv(4096)
+                except BlockingIOError:
+                    continue
+                if not data:
+                    break
+                os.write(sys.stdout.fileno(), data)
+                
+            # Data from the user (keyboard input)
+            if sys.stdin in r:
+                data = os.read(fd, 4096)
+                if not data:
+                    break
+                try:
+                    sock.sendall(data)
+                except BlockingIOError:
+                    # Ignore blocked local socket writes
+                    pass
+    finally:
+        if old_settings:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        sock.close()
 
 
-def shell_in_container(name: str):
-    """Open interactive shell in container."""
-    # Use machinectl directly for interactive shell
-    cmd = ["machinectl", "shell", name]
-    subprocess.run(cmd)
+def exec_in_container(client: IPCClient, name: str, command: List[str]):
+    """Execute command in container via interactive IPC stream."""
+    sock = client.stream_request("stream_exec", {"name": name, "command": command})
+    _proxy_terminal(sock)
+
+
+def shell_in_container(client: IPCClient, name: str):
+    """Open interactive shell in container via interactive IPC stream."""
+    sock = client.stream_request("stream_shell", {"name": name})
+    _proxy_terminal(sock)
 
 
 def pull_image(client: IPCClient, name: str):
