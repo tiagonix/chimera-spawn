@@ -107,9 +107,10 @@ class ContainerProvider(BaseProvider):
         
         # Clone image to create container
         try:
+            # Extended timeout for cloning operations
             await run_command([
                 "machinectl", "clone", spec.image, spec.name
-            ])
+            ], timeout=600)
             logger.debug(f"Cloned image {spec.image} to container {spec.name}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to clone image: {e}. Stderr: {e.stderr}")
@@ -165,7 +166,8 @@ class ContainerProvider(BaseProvider):
             
             # Remove container
             try:
-                await run_command(["machinectl", "remove", spec.name])
+                # Extended timeout for removal (can be slow for large containers or hung processes)
+                await run_command(["machinectl", "remove", spec.name], timeout=120)
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to remove container: {e}. Stderr: {e.stderr}")
                 raise

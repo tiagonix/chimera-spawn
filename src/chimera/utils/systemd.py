@@ -25,7 +25,7 @@ async def run_command(
     cmd: List[str],
     check: bool = True,
     capture_output: bool = True,
-    timeout: Optional[int] = None,
+    timeout: Optional[int] = 30,  # Default safety timeout
     **kwargs
 ) -> CommandResult:
     """Run a command asynchronously."""
