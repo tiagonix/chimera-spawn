@@ -221,9 +221,12 @@ proxy:
 # Container Management
 chimeractl list                # List all resources
 chimeractl spawn <n>           # Create and start container
+chimeractl start <n>           # Start container
 chimeractl stop <n>            # Stop container
+chimeractl restart <n>         # Restart container
 chimeractl remove <n>          # Remove container
 chimeractl exec <n> -- <cmd>   # Execute command
+chimeractl shell <n>           # Interactive shell in container
 
 # Image Management
 chimeractl image pull <n>      # Pull image

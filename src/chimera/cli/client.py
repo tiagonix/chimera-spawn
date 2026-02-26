@@ -38,6 +38,7 @@ class IPCClient:
         
         # Connect to socket
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(10.0)  # Default timeout for all IPC operations
         try:
             sock.connect(str(self.socket_path))
             
@@ -66,6 +67,8 @@ class IPCClient:
                 
             return response.get("data", {})
             
+        except socket.timeout:
+            raise IPCError("Agent connection timed out")
         except socket.error as e:
             raise IPCError(f"Socket error: {e}")
         except json.JSONDecodeError as e:

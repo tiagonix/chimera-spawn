@@ -90,6 +90,12 @@ class TestContainerProvider:
                 unlink_called = len(mock_to_thread.call_args_list) > 0
                 
                 assert unlink_called, "Should have offloaded filesystem operations"
+            
+            # Verify explicit timeout was passed to machinectl remove
+            # run_command call args: (cmd, check, capture, timeout) or kwargs
+            # We check if timeout=120 was passed
+            _, kwargs = mock_run.call_args
+            assert kwargs.get('timeout') == 120
 
     async def test_status_is_read_only(self, container_provider):
         """Test that status check does not perform cleanup on partial containers."""

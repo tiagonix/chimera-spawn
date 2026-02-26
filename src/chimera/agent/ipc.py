@@ -97,8 +97,13 @@ class IPCServer:
         logger.debug(f"Client connected: {client_addr}, UID: {client_uid}")
         
         try:
-            # Read request
-            data = await reader.read(65536)  # 64KB max request size
+            # Read request with timeout to prevent dead connection hangs
+            try:
+                data = await asyncio.wait_for(reader.read(65536), timeout=5.0)  # 64KB max request size
+            except asyncio.TimeoutError:
+                logger.warning(f"Client {client_addr} timed out sending request")
+                return
+                
             if not data:
                 return
                 
