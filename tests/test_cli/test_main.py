@@ -15,10 +15,10 @@ def test_run_cli_command_success(mock_console, mock_ipc_client):
     """Test the CLI command runner on a successful execution."""
     mock_handler = MagicMock()
     
-    _run_cli_command(mock_handler, socket="/tmp/test.sock", arg1="value1")
+    _run_cli_command(mock_handler, socket="/tmp/test.sock", host=None, arg1="value1")
     
     # Verify IPCClient was instantiated correctly
-    mock_ipc_client.assert_called_once_with(socket_path="/tmp/test.sock")
+    mock_ipc_client.assert_called_once_with(socket_path="/tmp/test.sock", host=None)
     
     # Verify the handler was called with the client and arguments
     mock_handler.assert_called_once_with(mock_ipc_client.return_value, arg1="value1")
@@ -34,10 +34,10 @@ def test_run_cli_command_ipc_error(mock_console, mock_ipc_client):
     mock_handler = MagicMock(side_effect=IPCError("Agent not found"))
     
     with pytest.raises(typer.Exit) as exc_info:
-        _run_cli_command(mock_handler, socket="/tmp/test.sock", arg1="value1")
+        _run_cli_command(mock_handler, socket="/tmp/test.sock", host=None, arg1="value1")
         
     # Verify IPCClient was instantiated
-    mock_ipc_client.assert_called_once_with(socket_path="/tmp/test.sock")
+    mock_ipc_client.assert_called_once_with(socket_path="/tmp/test.sock", host=None)
     
     # Verify the handler was called
     mock_handler.assert_called_once_with(mock_ipc_client.return_value, arg1="value1")

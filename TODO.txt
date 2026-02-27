@@ -1,0 +1,73 @@
+================================================================================
+TODO: CLI SYNCHRONOUS UPGRADE (POST-UBUNTU 24.04 REMEDIATION)
+================================================================================
+
+CONTEXT:
+On 2026-02-26, the CLI was refactored from a synchronous "websockets.sync" 
+implementation to an asynchronous "asyncio.run" wrapper. This was required 
+to maintain compatibility with Ubuntu 24.04 LTS, which provides 'websockets' 
+v10.4. The 'websockets.sync' module was only introduced in v11.0.
+
+MISSION:
+Once the target environment (e.g., Ubuntu 26.04) provides 'websockets' >= 11.0, 
+undo the async complexity in the CLI to restore a cleaner, synchronous 
+architecture.
+
+--------------------------------------------------------------------------------
+STEP 1: Dependency Update
+--------------------------------------------------------------------------------
+- File: pyproject.toml
+- Action: Update "websockets>=10.4" to "websockets>=11.0".
+
+--------------------------------------------------------------------------------
+STEP 2: IPC Client Reversion
+--------------------------------------------------------------------------------
+- File: src/chimera/cli/client.py
+- Action: 
+    1. Import 'from websockets.sync.client import connect as ws_connect'.
+    2. Import 'from websockets.sync.unix import connect as unix_connect'.
+    3. Refactor 'stream_connect' to be a standard synchronous method.
+    4. Remove 'AsyncContextManager' type hints.
+    5. Return the result of 'ws_connect' or 'unix_connect' directly.
+
+--------------------------------------------------------------------------------
+STEP 3: Command Wrapper Reversion
+--------------------------------------------------------------------------------
+- File: src/chimera/cli/commands.py
+- Action:
+    1. Remove 'async def _run()' inner functions from 'exec_in_container' and 
+       'shell_in_container'.
+    2. Remove 'asyncio.run()' calls.
+    3. Invoke 'client.stream_connect' and '_proxy_terminal' directly in the 
+       synchronous thread.
+
+--------------------------------------------------------------------------------
+STEP 4: Terminal Proxy Re-implementation (The "select" Model)
+--------------------------------------------------------------------------------
+- File: src/chimera/cli/commands.py
+- Action:
+    1. Convert 'async def _proxy_terminal(ws)' back to 'def _proxy_terminal(ws)'.
+    2. Remove 'asyncio.Queue', 'loop.add_reader', and 'pump' tasks.
+    3. Use 'ws.socket' to get the underlying file descriptor.
+    4. Implement a standard synchronous 'select.select([sys.stdin, sock], [], [])' 
+       loop.
+    5. Use 'ws.send()' and 'ws.recv()' synchronously inside the select loop.
+    6. Simplify the 'SIGWINCH' signal handler to a standard 'ws.send()' call 
+       (no threadsafe scheduling required).
+
+--------------------------------------------------------------------------------
+STEP 5: Test Suite Realignment
+--------------------------------------------------------------------------------
+- File: tests/test_cli/test_commands.py
+- Action:
+    1. Remove 'AsyncMock' and 'asyncio.run' mocks.
+    2. Update 'test_exec_in_container_uses_stream_request' and others to 
+       validate standard synchronous calls.
+
+================================================================================
+RATIONALE:
+The synchronous 'select' model is significantly easier to reason about for a 
+single-purpose CLI tool. It avoids the overhead of a background event loop 
+and complex signal-to-thread scheduling, leading to better maintainability 
+once the library support is natively available in the OS.
+================================================================================

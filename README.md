@@ -62,7 +62,9 @@ sudo apt install -y \
     python3-watchfiles \
     python3-psutil \
     python3-aiofiles \
-    python3-httpx
+    python3-httpx \
+    python3-aiohttp \
+    python3-websockets
 
 # For running full Pytest suite
 sudo apt install -y \

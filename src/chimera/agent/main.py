@@ -11,7 +11,7 @@ from watchfiles import awatch
 
 from chimera.agent.config import ConfigManager
 from chimera.agent.engine import StateEngine
-from chimera.agent.ipc import IPCServer
+from chimera.agent.server import AgentServer
 from chimera.providers import ProviderRegistry
 from chimera.utils.logging import setup_logging
 
@@ -28,7 +28,7 @@ class ChimeraAgent:
         self.state_dir = Path("./state")
         self.config_manager: Optional[ConfigManager] = None
         self.state_engine: Optional[StateEngine] = None
-        self.ipc_server: Optional[IPCServer] = None
+        self.server: Optional[AgentServer] = None
         self.shutdown_event = asyncio.Event()
         self._tasks: list[asyncio.Task] = []
         
@@ -55,15 +55,15 @@ class ChimeraAgent:
             provider_registry=registry,
         )
         
-        # Initialize IPC server
+        # Initialize Server
         socket_path = Path(config.agent.socket_path)
-        if socket_path.is_absolute():
-            ipc_socket = socket_path
-        else:
-            ipc_socket = self.state_dir / socket_path.name
+        if not socket_path.is_absolute():
+            socket_path = self.state_dir / socket_path.name
             
-        self.ipc_server = IPCServer(
-            socket_path=ipc_socket,
+        self.server = AgentServer(
+            socket_path=socket_path,
+            host=config.agent.host,
+            port=config.agent.port,
             state_engine=self.state_engine,
             config_manager=self.config_manager,
         )
@@ -81,9 +81,8 @@ class ChimeraAgent:
             
         # Start components
         try:
-            # Start IPC server
-            server_task = asyncio.create_task(self.ipc_server.start())
-            self._tasks.append(server_task)
+            # Start Server
+            await self.server.start()
             
             # Start reconciliation loop
             reconcile_task = asyncio.create_task(self._reconciliation_loop())
@@ -128,12 +127,10 @@ class ChimeraAgent:
                 logger.info("Configuration changed, reloading")
                 try:
                     await self.config_manager.load()
-                    # Trigger immediate reconciliation
                     asyncio.create_task(self.state_engine.reconcile())
                 except Exception as e:
                     logger.error(f"Failed to reload configuration: {e}")
         except Exception as e:
-            # Handle cancellation gracefully
             if not self.shutdown_event.is_set():
                 logger.error(f"Config watch error: {e}", exc_info=True)
             
@@ -146,25 +143,20 @@ class ChimeraAgent:
         """Clean up resources."""
         logger.info("Cleaning up agent resources")
         
-        # Cancel all tasks
         for task in self._tasks:
             if not task.done():
                 task.cancel()
-                
-        # Wait for tasks to complete
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
             
-        # Stop IPC server
-        if self.ipc_server:
-            await self.ipc_server.stop()
+        if self.server:
+            await self.server.stop()
             
         logger.info("Agent cleanup completed")
 
 
 async def run_agent():
     """Run the agent."""
-    # Allow config dir override from environment
     import os
     config_dir = os.environ.get("CHIMERA_CONFIG_DIR")
     if config_dir:
