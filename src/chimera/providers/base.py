@@ -1,0 +1,51 @@
+"""
+Base provider interface.
+
+Author: Thiago Camargo <thiagocmc@proton.me>
+License: AGPL-3.0-only
+"""
+
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Any, TYPE_CHECKING
+from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from chimera.providers.registry import ProviderRegistry
+
+
+class ProviderStatus(Enum):
+    """Provider resource status."""
+    PRESENT = "present"
+    ABSENT = "absent"
+    UNKNOWN = "unknown"
+    ERROR = "error"
+
+
+class BaseProvider(ABC):
+    """Base provider interface that all providers must implement."""
+    
+    @abstractmethod
+    async def initialize(self, config: Any, registry: "ProviderRegistry"):
+        """Initialize the provider with configuration and registry."""
+        pass
+        
+    @abstractmethod
+    async def status(self, spec: BaseModel) -> ProviderStatus:
+        """Check the current status of a resource."""
+        pass
+        
+    @abstractmethod
+    async def present(self, spec: BaseModel) -> None:
+        """Ensure the resource is present."""
+        pass
+        
+    @abstractmethod
+    async def absent(self, spec: BaseModel) -> None:
+        """Ensure the resource is absent."""
+        pass
+        
+    @abstractmethod
+    async def validate_spec(self, spec: BaseModel) -> bool:
+        """Validate the resource specification."""
+        pass

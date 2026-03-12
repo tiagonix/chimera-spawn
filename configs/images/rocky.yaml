@@ -1,0 +1,31 @@
+---
+# RHEL-Based Linux Images Configuration
+
+#rocky9-nspawn-tar:
+#  type: tar
+#  verify: no
+#  source: https://hub.nspawn.org/storage/rocky/9/tar/image.tar.xz
+#  #source_type: nspawn  # Optional marker
+
+#rocky9-cloud-raw:
+#  type: raw
+#  verify: no
+#  source: https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud.latest.x86_64.qcow2
+#  custom_files:
+#    - path: etc/fstab
+#      ensure: absent
+#    - path: etc/resolv.conf
+#      ensure: absent
+#    - path: etc/systemd/system/systemd-resolved.service
+#      ensure: link
+#      target: /dev/null
+
+#oracle9-raw:
+#  type: raw
+#  verify: no
+#  source: https://yum.oracle.com/templates/OracleLinux/OL9/u4/x86_64/OL9U4_x86_64-kvm-b234.qcow2
+#  custom_files:
+#    - path: etc/fstab
+#      ensure: absent
+#    - path: etc/resolv.conf
+#      ensure: absent

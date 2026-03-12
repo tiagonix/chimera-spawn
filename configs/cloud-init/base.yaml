@@ -1,0 +1,44 @@
+---
+# Base Cloud-Init Templates
+
+base_minimal:
+  meta_data: {}
+  user_data: |
+    #cloud-config
+    manage_etc_hosts: true
+    users:
+      - name: chimera
+        shell: /bin/bash
+        sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    {% if proxy and proxy.http_proxy %}
+    write_files:
+      - path: /etc/environment
+        content: |
+          http_proxy="{{ proxy.http_proxy }}"
+          https_proxy="{{ proxy.https_proxy }}"
+          no_proxy="{{ proxy.no_proxy }}"
+    {% endif %}
+
+debian_base:
+  meta_data: {}
+  user_data: |
+    #cloud-config
+    manage_etc_hosts: true
+    users:
+      - name: chimera
+        shell: /bin/bash
+        sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    {% if proxy and proxy.http_proxy %}
+    apt:
+      http_proxy: {{ proxy.http_proxy }}
+      https_proxy: {{ proxy.https_proxy }}
+    write_files:
+      - path: /etc/environment
+        content: |
+          http_proxy="{{ proxy.http_proxy }}"
+          https_proxy="{{ proxy.https_proxy }}"
+          no_proxy="{{ proxy.no_proxy }}"
+    {% endif %}
+    runcmd:
+      - apt-get update
+      - apt-get -y autoremove

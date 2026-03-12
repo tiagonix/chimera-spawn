@@ -1,0 +1,44 @@
+---
+# Debian Images Configuration
+
+#debian-13-cloud-tar:
+#  type: tar
+#  verify: no
+#  source: https://cloud.debian.org/images/cloud/trixie/daily/latest/debian-13-genericcloud-amd64-daily.tar.xz
+#  custom_files:
+#    - path: etc/fstab
+#      ensure: absent
+#    - path: etc/resolv.conf
+#      ensure: absent
+#    - path: etc/systemd/system/systemd-resolved.service
+#      ensure: link
+#      target: /dev/null
+#
+#
+#debian-12-cloud-tar:
+#  type: tar
+#  verify: no
+#  source: https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.tar.xz
+#  custom_files:
+#    - path: etc/fstab
+#      ensure: absent
+#    - path: etc/resolv.conf
+#      ensure: absent
+#    - path: etc/systemd/system/systemd-resolved.service
+#      ensure: link
+#      target: /dev/null
+
+#debian-13-cloud-raw:
+#  type: raw
+#  verify: no
+#  source: https://cloud.debian.org/images/cloud/trixie/daily/latest/debian-13-genericcloud-amd64-daily.qcow2
+#
+#debian-12-cloud-raw:
+#  type: raw
+#  verify: no
+#  source: https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2
+#
+#debian-11-cloud-raw:
+#  type: raw
+#  verify: no
+#  source: https://cloud.debian.org/images/cloud/bullseye/latest/debian-11-genericcloud-amd64.qcow2

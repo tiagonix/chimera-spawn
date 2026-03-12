@@ -1,0 +1,29 @@
+---
+# Test Node Configuration
+
+containers:
+  #rocky9-test:
+  #  ensure: present
+  #  state: running
+  #  image: rocky9-nspawn-tar
+  #  profile: isolated
+  #  cloud_init:
+  #    template: base_minimal
+ 
+  #rocky9-app:
+  #  ensure: present
+  #  state: running
+  #  image: rocky9-cloud-raw
+  #  profile: isolated
+  #  cloud_init:
+  #    template: base_minimal
+      
+  ubuntu-privileged:
+    ensure: present
+    state: running
+    image: ubuntu-22.04-cloud-tar
+    profile: privileged
+    cloud_init:
+      template: ubuntu_base
+      meta_data:
+        role: privileged-testing

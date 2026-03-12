@@ -1,0 +1,58 @@
+---
+# Ubuntu Images Configuration
+
+ubuntu-24.04-cloud-tar:
+  type: tar
+  verify: signature
+  source: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64-root.tar.xz
+  custom_files:
+    - path: etc/fstab
+      ensure: absent
+    - path: etc/resolv.conf
+      ensure: absent
+    - path: etc/systemd/system/systemd-resolved.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/systemd-networkd-wait-online.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/systemd-remount-fs.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/tpm-udev.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/iscsid.socket
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/ssh.socket
+      ensure: link
+      target: /dev/null
+
+ubuntu-22.04-cloud-tar:
+  type: tar
+  verify: signature
+  source: https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64-root.tar.xz
+  custom_files:
+    - path: etc/fstab
+      ensure: absent
+    - path: etc/resolv.conf
+      ensure: absent
+    - path: etc/systemd/system/systemd-resolved.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/systemd-networkd-wait-online.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/snapd.service
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/snap-lxd-29351.mount
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/snap-core20-2379.mount
+      ensure: link
+      target: /dev/null
+    - path: etc/systemd/system/snap-snapd-21759.mount
+      ensure: link
+      target: /dev/null

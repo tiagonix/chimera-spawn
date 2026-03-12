@@ -1,0 +1,22 @@
+---
+# Chimera Spawn Configuration
+
+agent:
+  socket_path: ./state/chimera-agent.sock
+  reconciliation_interval: 30
+  log_level: INFO
+  config_dir: ./configs
+  state_dir: ./state
+
+# Optional proxy configuration
+# Uncomment and modify if you need proxy support
+# proxy:
+#   http_proxy: http://proxy.company.com:3128
+#   https_proxy: http://proxy.company.com:3128
+#   no_proxy: localhost,127.0.0.1
+
+# Systemd paths (usually don't need to change)
+systemd:
+  machines_dir: /var/lib/machines
+  nspawn_dir: /etc/systemd/nspawn
+  system_dir: /etc/systemd/system

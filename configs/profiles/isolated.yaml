@@ -1,0 +1,14 @@
+---
+# Isolated Profile - Standard isolation
+
+isolated:
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    [Network]
+    Private=no
+    VirtualEthernet=no
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M
