@@ -147,9 +147,7 @@ class ContainerStore:
                 problems.append(f"missing {', '.join(missing)}")
             if unexpected:
                 problems.append(f"unexpected {', '.join(unexpected)}")
-            raise StoreCorruptionError(
-                f"{description} fields are invalid: {'; '.join(problems)}"
-            )
+            raise StoreCorruptionError(f"{description} fields are invalid: {'; '.join(problems)}")
 
     def records(self) -> list[ContainerRecord]:
         """Return detached records ordered by name."""

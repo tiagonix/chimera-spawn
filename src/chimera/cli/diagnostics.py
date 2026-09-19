@@ -57,10 +57,7 @@ def _diagnose_remote_client_error(error: ClientError) -> ClientError:
     suggestion = error.suggestion
     looks_local = bool(
         suggestion
-        and (
-            "chimeractl doctor" in suggestion
-            or "systemctl start chimera-server" in suggestion
-        )
+        and ("chimeractl doctor" in suggestion or "systemctl start chimera-server" in suggestion)
     )
     if error.code == "tls_handshake_failed":
         suggestion = (

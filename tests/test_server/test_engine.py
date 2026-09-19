@@ -70,4 +70,3 @@ class TestStateEngineEnrichment:
 
         # Verify template key is removed after processing
         assert enriched_ci.template is None
-

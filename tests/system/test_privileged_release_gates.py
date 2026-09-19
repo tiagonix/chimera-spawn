@@ -991,5 +991,3 @@ def test_remote_tls_lifecycle_when_explicitly_enabled(privileged_package, unique
         for path in (server_cert, server_key, client_ca):
             path.unlink(missing_ok=True)
         tls_dir.rmdir()
-
-

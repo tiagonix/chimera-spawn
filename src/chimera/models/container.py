@@ -13,7 +13,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from chimera.pydantic_compat import (
     AllowExtraModel,
@@ -142,8 +142,8 @@ class ContainerSpec(IgnoreExtraModel):
     resource_controls: ResourceControlSpec | None = None
 
     # Internal fields for resolved catalog objects; never persisted as identity.
-    _image_spec: Any | None = None
-    _profile_spec: Any | None = None
+    _image_spec: Any | None = PrivateAttr(default=None)
+    _profile_spec: Any | None = PrivateAttr(default=None)
 
     @validated_field("name")
     @classmethod
@@ -180,7 +180,7 @@ class ContainerRecord(ForbidExtraModel):
     if PYDANTIC_V2:
 
         @model_validator(mode="after")
-        def validate_complete_materialization(self):
+        def validate_complete_materialization(self) -> ContainerRecord:
             """Require completed provisioning to identify its materialization."""
             if self.provisioning_state == "complete" and self.materialization_id is None:
                 raise ValueError("complete provisioning requires a materialization_id")
@@ -188,8 +188,10 @@ class ContainerRecord(ForbidExtraModel):
 
     else:
 
-        @root_validator
-        def validate_complete_materialization(cls, values: dict[str, Any]) -> dict[str, Any]:
+        @root_validator(skip_on_failure=True)
+        def validate_complete_materialization(
+            cls: type[ContainerRecord], values: dict[str, Any]
+        ) -> dict[str, Any]:
             """Require completed provisioning to identify its materialization."""
             if (
                 values.get("provisioning_state") == "complete"

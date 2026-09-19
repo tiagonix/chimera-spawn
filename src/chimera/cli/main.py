@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, List, Optional, cast
 
 import typer
 from pydantic import ValidationError
@@ -276,12 +276,12 @@ def _exit_with_error(error: ClientError, output_format: OutputFormat) -> None:
 def list_command(
     resource_type: str = typer.Argument("all", help="images, containers, profiles, or all"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """List images, profiles, and managed containers."""
     output_format = _format(output_format)
@@ -368,29 +368,29 @@ def create_command(
     image: str = typer.Argument(..., metavar="IMAGE", help="Catalog image to clone"),
     name: str = typer.Argument(..., metavar="NAME", help="New container name"),
     profile: str = typer.Option("standard", "--profile", help="Catalog profile to apply"),
-    cloud_init: str | None = typer.Option(None, "--cloud-init", help="Cloud-init template"),
-    bind: list[str] | None = typer.Option(None, "--bind", help="Writable SOURCE:DEST[:OPTIONS]"),
-    bind_ro: list[str] | None = typer.Option(
+    cloud_init: Optional[str] = typer.Option(None, "--cloud-init", help="Cloud-init template"),
+    bind: Optional[List[str]] = typer.Option(None, "--bind", help="Writable SOURCE:DEST[:OPTIONS]"),
+    bind_ro: Optional[List[str]] = typer.Option(
         None, "--bind-ro", help="Read-only SOURCE:DEST[:OPTIONS]"
     ),
-    tmpfs: list[str] | None = typer.Option(None, "--tmpfs", help="Tmpfs DEST[:OPTIONS]"),
-    publish: list[str] | None = typer.Option(None, "--publish", help="Publish a guest port"),
-    memory_high: str | None = typer.Option(None, "--memory-high", help="Systemd MemoryHigh"),
-    memory_max: str | None = typer.Option(None, "--memory-max", help="Systemd MemoryMax"),
-    memory_swap_max: str | None = typer.Option(
+    tmpfs: Optional[List[str]] = typer.Option(None, "--tmpfs", help="Tmpfs DEST[:OPTIONS]"),
+    publish: Optional[List[str]] = typer.Option(None, "--publish", help="Publish a guest port"),
+    memory_high: Optional[str] = typer.Option(None, "--memory-high", help="Systemd MemoryHigh"),
+    memory_max: Optional[str] = typer.Option(None, "--memory-max", help="Systemd MemoryMax"),
+    memory_swap_max: Optional[str] = typer.Option(
         None, "--memory-swap-max", help="Systemd MemorySwapMax"
     ),
-    tasks_max: int | None = typer.Option(None, "--tasks-max", min=1),
-    cpu_quota: int | None = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
-    cpu_weight: int | None = typer.Option(None, "--cpu-weight", min=1, max=10000),
-    io_weight: int | None = typer.Option(None, "--io-weight", min=1, max=10000),
+    tasks_max: Optional[int] = typer.Option(None, "--tasks-max", min=1),
+    cpu_quota: Optional[int] = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
+    cpu_weight: Optional[int] = typer.Option(None, "--cpu-weight", min=1, max=10000),
+    io_weight: Optional[int] = typer.Option(None, "--io-weight", min=1, max=10000),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Create a stopped container: create IMAGE NAME."""
     _create_or_launch(
@@ -425,29 +425,29 @@ def launch_command(
     image: str = typer.Argument(..., metavar="IMAGE", help="Catalog image to clone"),
     name: str = typer.Argument(..., metavar="NAME", help="New container name"),
     profile: str = typer.Option("standard", "--profile", help="Catalog profile to apply"),
-    cloud_init: str | None = typer.Option(None, "--cloud-init", help="Cloud-init template"),
-    bind: list[str] | None = typer.Option(None, "--bind", help="Writable SOURCE:DEST[:OPTIONS]"),
-    bind_ro: list[str] | None = typer.Option(
+    cloud_init: Optional[str] = typer.Option(None, "--cloud-init", help="Cloud-init template"),
+    bind: Optional[List[str]] = typer.Option(None, "--bind", help="Writable SOURCE:DEST[:OPTIONS]"),
+    bind_ro: Optional[List[str]] = typer.Option(
         None, "--bind-ro", help="Read-only SOURCE:DEST[:OPTIONS]"
     ),
-    tmpfs: list[str] | None = typer.Option(None, "--tmpfs", help="Tmpfs DEST[:OPTIONS]"),
-    publish: list[str] | None = typer.Option(None, "--publish", help="Publish a guest port"),
-    memory_high: str | None = typer.Option(None, "--memory-high", help="Systemd MemoryHigh"),
-    memory_max: str | None = typer.Option(None, "--memory-max", help="Systemd MemoryMax"),
-    memory_swap_max: str | None = typer.Option(
+    tmpfs: Optional[List[str]] = typer.Option(None, "--tmpfs", help="Tmpfs DEST[:OPTIONS]"),
+    publish: Optional[List[str]] = typer.Option(None, "--publish", help="Publish a guest port"),
+    memory_high: Optional[str] = typer.Option(None, "--memory-high", help="Systemd MemoryHigh"),
+    memory_max: Optional[str] = typer.Option(None, "--memory-max", help="Systemd MemoryMax"),
+    memory_swap_max: Optional[str] = typer.Option(
         None, "--memory-swap-max", help="Systemd MemorySwapMax"
     ),
-    tasks_max: int | None = typer.Option(None, "--tasks-max", min=1),
-    cpu_quota: int | None = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
-    cpu_weight: int | None = typer.Option(None, "--cpu-weight", min=1, max=10000),
-    io_weight: int | None = typer.Option(None, "--io-weight", min=1, max=10000),
+    tasks_max: Optional[int] = typer.Option(None, "--tasks-max", min=1),
+    cpu_quota: Optional[int] = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
+    cpu_weight: Optional[int] = typer.Option(None, "--cpu-weight", min=1, max=10000),
+    io_weight: Optional[int] = typer.Option(None, "--io-weight", min=1, max=10000),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Create and start a container: launch IMAGE NAME."""
     _create_or_launch(
@@ -482,29 +482,29 @@ def spawn_command(
     image: str = typer.Argument(..., metavar="IMAGE", help="Catalog image to clone"),
     name: str = typer.Argument(..., metavar="NAME", help="New container name"),
     profile: str = typer.Option("standard", "--profile", help="Catalog profile to apply"),
-    cloud_init: str | None = typer.Option(None, "--cloud-init", help="Cloud-init template"),
-    bind: list[str] | None = typer.Option(None, "--bind", help="Writable SOURCE:DEST[:OPTIONS]"),
-    bind_ro: list[str] | None = typer.Option(
+    cloud_init: Optional[str] = typer.Option(None, "--cloud-init", help="Cloud-init template"),
+    bind: Optional[List[str]] = typer.Option(None, "--bind", help="Writable SOURCE:DEST[:OPTIONS]"),
+    bind_ro: Optional[List[str]] = typer.Option(
         None, "--bind-ro", help="Read-only SOURCE:DEST[:OPTIONS]"
     ),
-    tmpfs: list[str] | None = typer.Option(None, "--tmpfs", help="Tmpfs DEST[:OPTIONS]"),
-    publish: list[str] | None = typer.Option(None, "--publish", help="Publish a guest port"),
-    memory_high: str | None = typer.Option(None, "--memory-high", help="Systemd MemoryHigh"),
-    memory_max: str | None = typer.Option(None, "--memory-max", help="Systemd MemoryMax"),
-    memory_swap_max: str | None = typer.Option(
+    tmpfs: Optional[List[str]] = typer.Option(None, "--tmpfs", help="Tmpfs DEST[:OPTIONS]"),
+    publish: Optional[List[str]] = typer.Option(None, "--publish", help="Publish a guest port"),
+    memory_high: Optional[str] = typer.Option(None, "--memory-high", help="Systemd MemoryHigh"),
+    memory_max: Optional[str] = typer.Option(None, "--memory-max", help="Systemd MemoryMax"),
+    memory_swap_max: Optional[str] = typer.Option(
         None, "--memory-swap-max", help="Systemd MemorySwapMax"
     ),
-    tasks_max: int | None = typer.Option(None, "--tasks-max", min=1),
-    cpu_quota: int | None = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
-    cpu_weight: int | None = typer.Option(None, "--cpu-weight", min=1, max=10000),
-    io_weight: int | None = typer.Option(None, "--io-weight", min=1, max=10000),
+    tasks_max: Optional[int] = typer.Option(None, "--tasks-max", min=1),
+    cpu_quota: Optional[int] = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
+    cpu_weight: Optional[int] = typer.Option(None, "--cpu-weight", min=1, max=10000),
+    io_weight: Optional[int] = typer.Option(None, "--io-weight", min=1, max=10000),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Deprecated alias for launch."""
     error_console.print("Warning: 'spawn' is deprecated; use 'launch'.")
@@ -568,12 +568,12 @@ def _lifecycle(
 def start_command(
     name: str = typer.Argument(..., metavar="NAME", help="Stopped managed container"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Start an existing container."""
     _lifecycle("start", name, output_format, socket, host, tls_ca, tls_cert, tls_key, timeout)
@@ -583,12 +583,12 @@ def start_command(
 def stop_command(
     name: str = typer.Argument(..., metavar="NAME", help="Running managed container"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Stop an existing container."""
     _lifecycle("stop", name, output_format, socket, host, tls_ca, tls_cert, tls_key, timeout)
@@ -598,12 +598,12 @@ def stop_command(
 def restart_command(
     name: str = typer.Argument(..., metavar="NAME", help="Managed container"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Restart an existing container and leave it running."""
     _lifecycle("restart", name, output_format, socket, host, tls_ca, tls_cert, tls_key, timeout)
@@ -671,12 +671,12 @@ def delete_command(
     name: str = typer.Argument(..., metavar="NAME", help="Managed container to delete"),
     force: bool = typer.Option(False, "--force", "-f", help="Delete without confirmation"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Delete a container and its Chimera-managed files."""
     _delete("delete", name, force, output_format, socket, host, tls_ca, tls_cert, tls_key, timeout)
@@ -687,12 +687,12 @@ def remove_command(
     name: str = typer.Argument(..., metavar="NAME", help="Managed container to delete"),
     force: bool = typer.Option(False, "--force", "-f", help="Delete without confirmation"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Deprecated alias for delete."""
     error_console.print("Warning: 'remove' is deprecated; use 'delete'.")
@@ -703,12 +703,12 @@ def remove_command(
 def info_command(
     name: str = typer.Argument(..., metavar="NAME", help="Managed container name"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Show desired state, observed state, and the latest error."""
     output_format = _format(output_format)
@@ -729,16 +729,16 @@ def info_command(
 
 @app.command("status")
 def status_command(
-    name: str | None = typer.Argument(
+    name: Optional[str] = typer.Argument(
         None, metavar="[NAME]", help="Deprecated container name; use info NAME"
     ),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Show server status; status NAME is a deprecated alias for info NAME."""
     if name:
@@ -777,12 +777,12 @@ def status_command(
 @app.command("doctor")
 def doctor_command(
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Diagnose server setup even when its control endpoint is unavailable."""
     output_format = _format(output_format)
@@ -828,13 +828,13 @@ def doctor_command(
 @app.command("exec")
 def exec_command(
     name: str = typer.Argument(..., metavar="NAME", help="Running managed container"),
-    command: list[str] = typer.Argument(..., metavar="COMMAND", help="Command to execute"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    command: List[str] = typer.Argument(..., metavar="COMMAND", help="Command to execute"),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Run an interactive command: exec NAME -- COMMAND."""
     _stream(socket, host, tls_ca, tls_cert, tls_key, timeout, name, command)
@@ -843,12 +843,12 @@ def exec_command(
 @app.command("shell")
 def shell_command(
     name: str = typer.Argument(..., metavar="NAME", help="Running managed container"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Open an interactive shell in a running container."""
     _stream(socket, host, tls_ca, tls_cert, tls_key, timeout, name, None)
@@ -857,18 +857,18 @@ def shell_command(
 @app.command("logs")
 def logs_command(
     name: str = typer.Argument(..., metavar="NAME", help="Managed container name"),
-    unit: str | None = typer.Option(None, "--unit", "-u", help="Guest journal unit"),
+    unit: Optional[str] = typer.Option(None, "--unit", "-u", help="Guest journal unit"),
     lines: int = typer.Option(200, "--lines", "-n", min=0, help="Initial journal lines"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow new journal records"),
     supervisor: bool = typer.Option(
         False, "--supervisor", help="Read the host systemd-nspawn service journal"
     ),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Stream guest or nspawn-supervisor records from the server journal."""
     if supervisor and unit is not None:
@@ -940,12 +940,12 @@ def _stream(
 @image_app.command("list")
 def image_list_command(
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """List catalog images before creating or launching a container."""
     output_format = _format(output_format)
@@ -968,12 +968,12 @@ def image_list_command(
 def image_pull_command(
     name: str = typer.Argument(..., metavar="IMAGE", help="Catalog image name"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Pull an image now; launch pulls a missing image automatically."""
     output_format = _format(output_format)
@@ -995,12 +995,12 @@ def image_pull_command(
 @profile_app.command("list")
 def profile_list_command(
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """List profiles accepted by create and launch."""
     output_format = _format(output_format)
@@ -1022,12 +1022,12 @@ def profile_list_command(
 @config_app.command("validate")
 def config_validate_command(
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Validate image, profile, cloud-init, and service configuration."""
     output_format = _format(output_format)
@@ -1051,12 +1051,12 @@ def import_nodes_command(
     path: Path = typer.Argument(..., exists=True, readable=True, help="Legacy node YAML file"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Validate without storing records"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Import legacy configs/nodes YAML into durable CLI-managed state."""
     output_format = _format(output_format)
@@ -1113,12 +1113,12 @@ def import_nodes_command(
 @server_app.command("status")
 def server_status_command(
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Show whether the server is serving commands."""
     status_command(
@@ -1136,12 +1136,12 @@ def server_status_command(
 @server_app.command("reload")
 def server_reload_command(
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
-    socket: str | None = _common_socket(),
-    host: str | None = _common_host(),
-    tls_ca: str | None = _common_tls_ca(),
-    tls_cert: str | None = _common_tls_cert(),
-    tls_key: str | None = _common_tls_key(),
-    timeout: float | None = typer.Option(None, "--timeout", min=1.0),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
     """Reload the static image/profile/cloud-init catalog."""
     output_format = _format(output_format)
