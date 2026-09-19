@@ -1,0 +1,155 @@
+.TH CHIMERACTL 1 "September 2026" "Chimera Spawn 1.0.0" "User Commands"
+.SH NAME
+chimeractl \- administer a Chimera Spawn server
+.SH SYNOPSIS
+.B chimeractl
+[\fICOMMAND\fR] [\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B chimeractl
+is the administrative client for Chimera Spawn. It talks to
+.B chimera-server
+over a local Unix-domain HTTP/WebSocket socket authenticated with
+.BR SO_PEERCRED ,
+or over HTTPS/WSS with mandatory mutual TLS when
+.B \-\-host
+is set.
+.PP
+Members of
+.B chimera-admin
+can operate an installed local server without
+.BR sudo
+after a fresh login session. An explicit
+.B \-\-socket
+selects a non-default local server socket.
+.PP
+.B exec
+runs a command inside a managed container with
+.B systemd-run --machine --wait --pty|--pipe --collect --service-type=exec --expand-environment=no
+and a unique
+.B chimera-exec-<id>.service
+unit. The CLI returns the guest exit status. Disconnect or server shutdown
+stops that exact unit. Command arguments are not placed in the WebSocket URL.
+A TTY session forwards the client's
+.B TERM
+as stream-start metadata and applies it with
+.BR --setenv=TERM=... .
+Redirected sessions do not invent a terminal type, and the client does not
+forward arbitrary process environment.
+.B shell
+uses
+.BR "machinectl shell"
+and does not propagate a guest status.
+.PP
+.B spawn
+is a deprecated alias for
+.BR launch .
+Create and launch default to catalog profile
+.B standard
+when
+.B \-\-profile
+is omitted.
+.SH COMMANDS
+.TP
+.B create IMAGE NAME
+Create a stopped container.
+.TP
+.B launch IMAGE NAME
+Create and start a container.
+.TP
+.B spawn IMAGE NAME
+Deprecated alias for launch. It accepts the same workload options.
+.TP
+.B logs NAME
+Stream the managed container's guest journal from the server host. Use
+.B \-\-supervisor
+for the host-side
+.B systemd-nspawn@NAME.service
+journal.
+.SH OPTIONS
+.TP
+.BR \-s ", " \-\-socket =\fIPATH\fR
+Local Unix socket. Mutually exclusive with
+.BR \-\-host .
+Command-local; there is no top-level socket flag.
+.TP
+.BR \-H ", " \-\-host =\fIHOST[:PORT]\fR
+Remote server. Always HTTPS/WSS. Default port 8080.
+.TP
+.B \-\-tls-ca \fIPATH\fR
+Trust anchor for the remote server certificate.
+.TP
+.B \-\-tls-cert \fIPATH\fR
+Client certificate. Root-equivalent remote administration.
+.TP
+.B \-\-tls-key \fIPATH\fR
+Client private key.
+.TP
+.B \-\-format \fItable|json\fR
+Output format. JSON is machine-readable on stdout.
+.TP
+.B \-\-timeout \fISECONDS\fR
+HTTP setup and WebSocket handshake timeout. It does not abort a started guest command.
+.SS Create, launch, and spawn workload options
+.TP
+.B \-\-bind \fISOURCE:DEST[:OPTIONS]\fR
+Add a writable native nspawn bind mount. Repeatable.
+.TP
+.B \-\-bind-ro \fISOURCE:DEST[:OPTIONS]\fR
+Add a read-only native nspawn bind mount. Repeatable. Escape literal path colons as
+.BR \e: .
+.TP
+.B \-\-tmpfs \fIDEST[:OPTIONS]\fR
+Add a native nspawn temporary filesystem. Repeatable.
+.TP
+.B \-\-publish \fISPEC\fR
+Publish a port. Accepted forms are PORT, HOST:CONTAINER,
+tcp:HOST:CONTAINER, and udp:HOST:CONTAINER. Repeatable.
+.TP
+.B \-\-memory-high \fISIZE\fR
+Set systemd MemoryHigh for this container.
+.TP
+.B \-\-memory-max \fISIZE\fR
+Set systemd MemoryMax for this container.
+.TP
+.B \-\-memory-swap-max \fISIZE\fR
+Set systemd MemorySwapMax for this container.
+.TP
+.B \-\-tasks-max \fIN\fR
+Set a positive systemd TasksMax.
+.TP
+.B \-\-cpu-quota \fIPERCENT\fR
+Set a positive CPUQuota percentage; 600 renders as 600%.
+.TP
+.B \-\-cpu-weight \fIN\fR
+Set CPUWeight in the range 1 through 10000.
+.TP
+.B \-\-io-weight \fIN\fR
+Set IOWeight in the range 1 through 10000.
+.SS Logs options
+.TP
+.BR \-u ", " \-\-unit \fIUNIT\fR
+Select a guest journal unit.
+.TP
+.BR \-n ", " \-\-lines \fIN\fR
+Show N initial records. Default 200.
+.TP
+.BR \-f ", " \-\-follow
+Follow new records until interrupted.
+.TP
+.B \-\-supervisor
+Read the host nspawn service journal. This may be used while the machine is stopped
+and cannot be combined with
+.BR \-\-unit .
+.SH FILES
+.TP
+.I /run/chimera-spawn/server.sock
+Default installed Unix socket.
+.SH SEE ALSO
+.BR chimera-server (1)
+.PP
+Project documentation:
+.IR /usr/share/doc/chimera-spawn-client/cli.md .
+.SH AUTHOR
+Thiago Camargo
+.SH COPYRIGHT
+AGPL-3.0-only

@@ -1,0 +1,80 @@
+Source: chimera-spawn
+Section: admin
+Priority: optional
+Maintainer: Thiago Camargo <thiagocmc@proton.me>
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-python3,
+               pybuild-plugin-pyproject,
+               python3-all,
+               python3-setuptools,
+               python3-wheel,
+               python3-pytest,
+               python3-pytest-asyncio,
+               python3-aiohttp,
+               python3-dbus-next,
+               python3-httpx,
+               python3-jinja2,
+               python3-pydantic,
+               python3-rich,
+               python3-ruamel.yaml,
+               python3-typer,
+               python3-watchfiles,
+               python3-websockets,
+               openssl
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/tiagonix/chimera-spawn
+
+Package: python3-chimera-spawn
+Architecture: all
+Section: python
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         python3-pydantic
+Description: shared Python implementation for Chimera Spawn
+ Shared models, errors, runtime helpers, and TLS/endpoint utilities used by
+ both the Chimera Spawn client and server. This package does not install the
+ CLI, server service, catalogs, or administrator group.
+
+Package: chimera-spawn-client
+Architecture: all
+Depends: python3-chimera-spawn (= ${binary:Version}),
+         ${misc:Depends},
+         ${python3:Depends},
+         python3-httpx,
+         python3-rich,
+         python3-ruamel.yaml,
+         python3-typer,
+         python3-websockets
+Description: CLI for local and remote Chimera Spawn administration
+ chimeractl administers a Chimera Spawn server over a local Unix socket or
+ authenticated HTTPS/WSS. It does not install the privileged server, systemd
+ service, catalogs, or systemd-nspawn runtime.
+
+Package: chimera-spawn-server
+Architecture: all
+Depends: python3-chimera-spawn (= ${binary:Version}),
+         ${misc:Depends},
+         ${python3:Depends},
+         adduser,
+         python3-aiohttp,
+         python3-dbus-next,
+         python3-jinja2,
+         python3-ruamel.yaml,
+         python3-watchfiles,
+         systemd-container
+Recommends: libnss-mymachines
+Description: privileged Chimera Spawn server for systemd-nspawn hosts
+ chimera-server is the durable lifecycle authority for managed systemd-nspawn
+ containers. It serves a local Unix-domain API and, when explicitly
+ configured, an authenticated TLS listener. Package installation does not
+ enable remote network access or generate TLS keys.
+
+Package: chimera-spawn
+Architecture: all
+Depends: chimera-spawn-client (= ${binary:Version}),
+         chimera-spawn-server (= ${binary:Version}),
+         ${misc:Depends}
+Description: systemd-nspawn container manager (complete installation)
+ Metapackage that installs the Chimera Spawn client and server together for
+ all-in-one hosts.

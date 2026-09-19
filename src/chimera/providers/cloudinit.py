@@ -7,17 +7,15 @@ License: AGPL-3.0-only
 
 import asyncio
 import logging
-from pathlib import Path
-from typing import Optional, Dict, Any, TYPE_CHECKING
-import json
-import io
 import shutil
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-from ruamel.yaml import YAML
-
+from chimera.errors import ChimeraError
+from chimera.models.container import ContainerSpec
 from chimera.providers.base import BaseProvider, ProviderStatus
-from chimera.models.container import ContainerSpec, CloudInitSpec
-from chimera.utils.templates import render_template
+from chimera.utils.fs import classify_materialization_path, write_contained_text
+from chimera.utils.rendering import creation_render_payload
 
 if TYPE_CHECKING:
     from chimera.providers.registry import ProviderRegistry
@@ -26,124 +24,91 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class CloudInitProvider(BaseProvider):
+class CloudInitProvider(BaseProvider[ContainerSpec]):
     """Provider for managing cloud-init configurations."""
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         """Initialize cloud-init provider."""
-        self.machines_dir: Optional[Path] = None
-        self.yaml = YAML()
-        self.yaml.preserve_quotes = True
-        self.proxy_config = None
-        
-    async def initialize(self, config, registry: "ProviderRegistry") -> None:
+        self.machines_dir: Path | None = None
+        self.proxy_config: Any | None = None
+
+    async def initialize(self, config: Any, registry: "ProviderRegistry") -> None:
         """Initialize provider with configuration and registry."""
         self.machines_dir = Path(config.systemd.machines_dir)
         self.proxy_config = config.proxy
-        
+
     async def status(self, spec: ContainerSpec) -> ProviderStatus:
         """Check cloud-init status."""
         if not spec.cloud_init:
             return ProviderStatus.ABSENT
-            
-        container_path = self.machines_dir / spec.name
+
+        container_path = self._require_machines_dir() / spec.name
         seed_dir = container_path / "var/lib/cloud/seed/nocloud"
-        
-        # Check existence via thread to avoid blocking if FS is slow
         exists = await asyncio.to_thread(seed_dir.exists)
-        
-        if exists:
-            return ProviderStatus.PRESENT
-        else:
-            return ProviderStatus.ABSENT
-            
+        return ProviderStatus.PRESENT if exists else ProviderStatus.ABSENT
+
     async def present(self, spec: ContainerSpec) -> None:
         """Ensure cloud-init is configured."""
-        # This is called from container provider
         await self.prepare(spec)
-        
+
     async def absent(self, spec: ContainerSpec) -> None:
         """Remove cloud-init configuration."""
-        container_path = self.machines_dir / spec.name
+        container_path = self._require_machines_dir() / spec.name
         cloud_dir = container_path / "var/lib/cloud"
-        
         if await asyncio.to_thread(cloud_dir.exists):
             await asyncio.to_thread(shutil.rmtree, cloud_dir)
-            logger.debug(f"Removed cloud-init directory for {spec.name}")
-            
+            logger.debug("Removed cloud-init directory for %s", spec.name)
+
     async def validate_spec(self, spec: ContainerSpec) -> bool:
         """Validate cloud-init specification."""
-        if not spec.cloud_init:
-            return True
-            
-        # Basic validation is handled by Pydantic
         return True
-        
+
     async def prepare(self, spec: ContainerSpec) -> None:
-        """Prepare cloud-init configuration for container."""
+        """Write cloud-init seed files inside a verified container root."""
         if not spec.cloud_init:
-            logger.debug(f"No cloud-init config for container {spec.name}")
+            logger.debug("No cloud-init config for container %s", spec.name)
             return
-            
-        container_path = self.machines_dir / spec.name
-        cloud_init = spec.cloud_init
-        
-        # Create directory structure
-        seed_dir = container_path / "var/lib/cloud/seed/nocloud"
-        await asyncio.to_thread(lambda: seed_dir.mkdir(parents=True, exist_ok=True))
-        
-        # Process meta-data
-        meta_data = await self._prepare_meta_data(spec.name, cloud_init)
-        if meta_data:
-            meta_file = seed_dir / "meta-data"
-            # Use StringIO to dump YAML
-            stream = io.StringIO()
-            # ruamel.yaml.dump is blocking
-            await asyncio.to_thread(self.yaml.dump, meta_data, stream)
-            await asyncio.to_thread(meta_file.write_text, stream.getvalue())
-            logger.debug(f"Created meta-data for {spec.name}")
-            
-        # Process user-data
-        user_data = await self._prepare_user_data(cloud_init)
-        if user_data:
-            user_file = seed_dir / "user-data"
-            await asyncio.to_thread(user_file.write_text, user_data)
-            logger.debug(f"Created user-data for {spec.name}")
-            
-        # Process network-config
-        network_config = cloud_init.network_config
-        if network_config:
-            network_file = seed_dir / "network-config"
-            await asyncio.to_thread(network_file.write_text, network_config)
-            logger.debug(f"Created network-config for {spec.name}")
-        else:
-            # Disable network configuration
-            disable_file = container_path / "etc/cloud/cloud.cfg.d/99-disable-network-config.cfg"
-            await asyncio.to_thread(lambda: disable_file.parent.mkdir(parents=True, exist_ok=True))
-            await asyncio.to_thread(disable_file.write_text, "network: {config: disabled}\n")
-            logger.debug(f"Disabled network config for {spec.name}")
-            
-    async def _prepare_meta_data(self, container_name: str, cloud_init: CloudInitSpec) -> Dict[str, Any]:
-        """Prepare meta-data content."""
-        meta_data = cloud_init.meta_data.copy() if cloud_init.meta_data else {}
-        
-        # Always set local-hostname
-        meta_data["local-hostname"] = container_name
-        
-        # Add instance-id if not present
-        if "instance-id" not in meta_data:
-            meta_data["instance-id"] = f"iid-{container_name}"
-            
-        return meta_data
-        
-    async def _prepare_user_data(self, cloud_init: CloudInitSpec) -> Optional[str]:
-        """Prepare user-data content."""
-        if not cloud_init.user_data:
-            return None
-            
-        # Render template with proxy settings if available
-        context = {
-            "proxy": self.proxy_config,
-        }
-        
-        return render_template(cloud_init.user_data, **context)
+
+        container_path = self._require_machines_dir() / spec.name
+        kind = await asyncio.to_thread(classify_materialization_path, container_path)
+        if kind != "directory":
+            raise ChimeraError(
+                code="provisioning_failed",
+                message=f"Container '{spec.name}' is not a writable root filesystem for cloud-init.",
+                suggestion="Cloud-init seeding requires a stopped directory materialization.",
+                status=422,
+            )
+        payload = creation_render_payload(
+            container_name=spec.name,
+            image=spec._image_spec,
+            cloud_init=spec.cloud_init,
+            proxy=self.proxy_config,
+        )
+        files = payload["files"]
+        if not isinstance(files, dict):
+            raise ChimeraError(
+                code="provisioning_failed",
+                message="Cloud-init rendering produced an invalid file map.",
+                status=502,
+            )
+        for relative, content in files.items():
+            if not isinstance(relative, str) or not isinstance(content, str):
+                continue
+            try:
+                await asyncio.to_thread(write_contained_text, container_path, relative, content)
+            except ChimeraError:
+                raise
+            except OSError as error:
+                raise ChimeraError(
+                    code="provisioning_failed",
+                    message=f"Could not write cloud-init file '{relative}' for '{spec.name}'.",
+                    detail=str(error),
+                    status=502,
+                ) from error
+            logger.debug("Wrote contained cloud-init file %s for %s", relative, spec.name)
+
+    def _require_machines_dir(self) -> Path:
+        """Return the configured container directory after provider initialization."""
+        if self.machines_dir is None:
+            raise RuntimeError("Cloud-init provider is not initialized")
+        return self.machines_dir

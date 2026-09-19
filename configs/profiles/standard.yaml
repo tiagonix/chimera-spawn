@@ -1,0 +1,16 @@
+---
+# Standard Profile - Default user-namespace isolation with shared host networking
+
+standard:
+  description: "Default: user-namespace isolation with shared host networking."
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    NotifyReady=yes
+    [Network]
+    Private=no
+    VirtualEthernet=no
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M

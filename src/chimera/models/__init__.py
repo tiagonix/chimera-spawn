@@ -5,19 +5,39 @@ Author: Thiago Camargo <thiagocmc@proton.me>
 License: AGPL-3.0-only
 """
 
-from chimera.models.config import ChimeraConfig, AgentConfig, ProxyConfig, SystemdConfig
-from chimera.models.container import ContainerSpec, CloudInitSpec
-from chimera.models.image import ImageSpec, CustomFileSpec
+from chimera.models.config import (
+    ServerConfig,
+    ServerTlsConfig,
+    ChimeraConfig,
+    ProxyConfig,
+    SystemdConfig,
+)
+from chimera.models.container import (
+    BindMountSpec,
+    CloudInitSpec,
+    ContainerRecord,
+    ContainerSpec,
+    PortForwardSpec,
+    ResourceControlSpec,
+    TmpfsMountSpec,
+)
+from chimera.models.image import CustomFileSpec, ImageSpec
 from chimera.models.profile import ProfileSpec
 
 __all__ = [
+    "ServerConfig",
+    "ServerTlsConfig",
     "ChimeraConfig",
-    "AgentConfig", 
-    "ProxyConfig",
-    "SystemdConfig",
-    "ContainerSpec",
+    "BindMountSpec",
     "CloudInitSpec",
-    "ImageSpec",
+    "ContainerRecord",
+    "ContainerSpec",
     "CustomFileSpec",
+    "ImageSpec",
+    "PortForwardSpec",
     "ProfileSpec",
+    "ProxyConfig",
+    "ResourceControlSpec",
+    "SystemdConfig",
+    "TmpfsMountSpec",
 ]

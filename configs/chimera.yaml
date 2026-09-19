@@ -1,0 +1,28 @@
+---
+# Chimera Spawn Configuration
+
+server:
+  reconciliation_interval: 30
+  log_level: INFO
+  admin_group: chimera-admin
+  # null keeps the remote TLS listener disabled. Unix-socket access still starts.
+  host: null
+  port: 8080
+  # Provide all three files before setting host to a bind address.
+  # tls:
+  #   certificate: /etc/chimera-spawn/tls/server.crt
+  #   private_key: /etc/chimera-spawn/tls/server.key
+  #   client_ca: /etc/chimera-spawn/tls/client-ca.crt
+
+# Optional proxy configuration
+# Uncomment and modify if you need proxy support
+# proxy:
+#   http_proxy: http://proxy.company.com:3128
+#   https_proxy: http://proxy.company.com:3128
+#   no_proxy: localhost,127.0.0.1
+
+# Systemd paths (usually don't need to change)
+systemd:
+  machines_dir: /var/lib/machines
+  nspawn_dir: /etc/systemd/nspawn
+  system_dir: /etc/systemd/system

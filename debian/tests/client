@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+test -x /usr/bin/chimeractl
+test ! -e /usr/bin/chimera-server
+test ! -e /usr/lib/systemd/system/chimera-server.service
+test ! -e /lib/systemd/system/chimera-server.service
+test ! -e /etc/chimera-spawn/chimera.yaml
+test ! -d /usr/share/chimera-spawn/catalog
+chimeractl --help >/dev/null
+python3 - <<'PY'
+import chimera
+import chimera.cli
+import chimera.endpoint
+import chimera.errors
+import chimera.models
+import chimera.runtime
+import chimera.tls
+
+print("client-imports", chimera.__version__, chimera.__file__)
+PY
+python3 - <<'PY'
+import subprocess
+
+for package in ("chimera-spawn-client", "python3-chimera-spawn"):
+    depends = subprocess.check_output(
+        ["dpkg-query", "-W", "-f", "${Depends}", package],
+        text=True,
+    )
+    for forbidden in (
+        "systemd-container",
+        "python3-aiohttp",
+        "python3-dbus-next",
+        "python3-watchfiles",
+        "adduser",
+    ):
+        assert forbidden not in depends, (package, depends)
+print("client-depends-ok")
+PY

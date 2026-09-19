@@ -7,7 +7,8 @@ License: AGPL-3.0-only
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -16,36 +17,37 @@ if TYPE_CHECKING:
 
 class ProviderStatus(Enum):
     """Provider resource status."""
+
     PRESENT = "present"
     ABSENT = "absent"
     UNKNOWN = "unknown"
     ERROR = "error"
 
 
-class BaseProvider(ABC):
+class BaseProvider[ProviderSpecT: BaseModel](ABC):
     """Base provider interface that all providers must implement."""
-    
+
     @abstractmethod
-    async def initialize(self, config: Any, registry: "ProviderRegistry"):
+    async def initialize(self, config: Any, registry: "ProviderRegistry") -> None:
         """Initialize the provider with configuration and registry."""
-        pass
-        
+        raise NotImplementedError
+
     @abstractmethod
-    async def status(self, spec: BaseModel) -> ProviderStatus:
+    async def status(self, spec: ProviderSpecT) -> ProviderStatus:
         """Check the current status of a resource."""
-        pass
-        
+        raise NotImplementedError
+
     @abstractmethod
-    async def present(self, spec: BaseModel) -> None:
+    async def present(self, spec: ProviderSpecT) -> None:
         """Ensure the resource is present."""
-        pass
-        
+        raise NotImplementedError
+
     @abstractmethod
-    async def absent(self, spec: BaseModel) -> None:
+    async def absent(self, spec: ProviderSpecT) -> None:
         """Ensure the resource is absent."""
-        pass
-        
+        raise NotImplementedError
+
     @abstractmethod
-    async def validate_spec(self, spec: BaseModel) -> bool:
+    async def validate_spec(self, spec: ProviderSpecT) -> bool:
         """Validate the resource specification."""
-        pass
+        raise NotImplementedError

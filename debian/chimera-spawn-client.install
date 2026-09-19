@@ -1,0 +1,3 @@
+usr/bin/chimeractl
+usr/lib/python3*/dist-packages/chimera/cli
+docs/cli.md usr/share/doc/chimera-spawn-client

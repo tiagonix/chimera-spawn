@@ -20,6 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.pybuild/
 
 # Virtual environments
 venv/
@@ -52,6 +53,7 @@ state/
 
 # Logs
 *.log
+session-ses_*.md
 
 # OS
 .DS_Store
@@ -60,3 +62,13 @@ Thumbs.db
 # Local configuration overrides
 configs/local/
 configs/*.local.yaml
+
+# Debian package build output
+debian/.debhelper/
+debian/tmp/
+debian/python3-chimera-spawn/
+debian/chimera-spawn*/
+debian/*.debhelper
+debian/*.substvars
+debian/debhelper-build-stamp
+debian/files

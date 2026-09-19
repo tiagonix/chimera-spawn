@@ -1,0 +1,26 @@
+#!/usr/bin/make -f
+
+export PYBUILD_NAME=chimera-spawn
+export PYBUILD_SYSTEM=pyproject
+export PYBUILD_TEST_PYTEST=1
+export PYBUILD_TEST_ARGS=-v --tb=short -m "not privileged"
+export PYTHONNOUSERSITE=1
+
+%:
+	dh $@ --buildsystem=pybuild
+
+override_dh_auto_install:
+	PYBUILD_DESTDIR=debian/tmp dh_auto_install
+	find debian/tmp -type d -name '__pycache__' -exec rm -rf {} +
+	find debian/tmp -type d -name '.pytest_cache' -exec rm -rf {} +
+
+override_dh_installsystemd:
+	dh_installsystemd -pchimera-spawn-server --name=chimera-server
+
+override_dh_python3:
+	# Wheel metadata lists the whole project. Shared-package Depends must
+	# follow the modules this binary actually ships.
+	find debian/python3-chimera-spawn -name METADATA -exec sed -i '/^Requires-Dist:/d' {} +
+	dh_python3 -ppython3-chimera-spawn
+	dh_python3 -pchimera-spawn-client
+	dh_python3 -pchimera-spawn-server

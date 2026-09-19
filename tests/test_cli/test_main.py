@@ -1,54 +1,46 @@
-"""
-Tests for CLI main module.
+"""Tests for user-visible CLI help, success output, and diagnostics."""
 
-Author: Thiago Camargo <thiagocmc@proton.me>
-License: AGPL-3.0-only
-"""
+import json
+from unittest.mock import patch
 
-import pytest
-from unittest.mock import MagicMock, patch
+from typer.testing import CliRunner
 
-import typer
+from chimera.cli.client import ClientError
+from chimera.cli.main import app
 
-from chimera.cli.main import _run_cli_command
-from chimera.cli.client import IPCError
+runner = CliRunner()
 
 
-@patch("chimera.cli.main.IPCClient")
-@patch("chimera.cli.main.console")
-def test_run_cli_command_success(mock_console, mock_ipc_client):
-    """Test the CLI command runner on a successful execution."""
-    mock_handler = MagicMock()
-    
-    _run_cli_command(mock_handler, socket="/tmp/test.sock", host=None, arg1="value1")
-    
-    # Verify IPCClient was instantiated correctly
-    mock_ipc_client.assert_called_once_with(socket_path="/tmp/test.sock", host=None)
-    
-    # Verify the handler was called with the client and arguments
-    mock_handler.assert_called_once_with(mock_ipc_client.return_value, arg1="value1")
-    
-    # Verify no error was printed
-    mock_console.print.assert_not_called()
+@patch("chimera.cli.main.ChimeraClient.request")
+def test_json_error_is_machine_readable(mock_request):
+    """Structured API errors remain structured at the CLI boundary."""
+    mock_request.side_effect = ClientError(
+        "not_found",
+        "Container 'demo' is not managed by Chimera Spawn.",
+        suggestion="Create it first.",
+    )
+
+    result = runner.invoke(app, ["info", "demo", "--format", "json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "not_found"
+    assert payload["error"]["suggestion"] == "Create it first."
 
 
-@patch("chimera.cli.main.IPCClient")
-@patch("chimera.cli.main.console")
-def test_run_cli_command_ipc_error(mock_console, mock_ipc_client):
-    """Test the CLI command runner when an IPCError is raised."""
-    mock_handler = MagicMock(side_effect=IPCError("Agent not found"))
-    
-    with pytest.raises(typer.Exit) as exc_info:
-        _run_cli_command(mock_handler, socket="/tmp/test.sock", host=None, arg1="value1")
-        
-    # Verify IPCClient was instantiated
-    mock_ipc_client.assert_called_once_with(socket_path="/tmp/test.sock", host=None)
-    
-    # Verify the handler was called
-    mock_handler.assert_called_once_with(mock_ipc_client.return_value, arg1="value1")
-    
-    # Verify the error message was printed to the console
-    mock_console.print.assert_called_once_with("[red]Error:[/red] Agent not found")
-    
-    # Verify typer.Exit was called
-    assert exc_info.value.exit_code == 1
+def test_legacy_import_dry_run_validates_records(tmp_path):
+    """Migration dry runs must validate records before promising an import."""
+    node_file = tmp_path / "nodes.yaml"
+    node_file.write_text(
+        "containers:\n  ../unsafe:\n    image: ubuntu\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app, ["config", "import-nodes", str(node_file), "--dry-run", "--format", "json"]
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "invalid_configuration"

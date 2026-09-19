@@ -6,7 +6,7 @@ containers:
   #  ensure: present
   #  state: running
   #  image: rocky9-nspawn-tar
-  #  profile: isolated
+  #  profile: standard
   #  cloud_init:
   #    template: base_minimal
  
@@ -14,7 +14,7 @@ containers:
   #  ensure: present
   #  state: running
   #  image: rocky9-cloud-raw
-  #  profile: isolated
+  #  profile: standard
   #  cloud_init:
   #    template: base_minimal
       

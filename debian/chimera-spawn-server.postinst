@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = configure ] && ! getent group chimera-admin >/dev/null; then
+    addgroup --system chimera-admin
+fi
+
+#DEBHELPER#

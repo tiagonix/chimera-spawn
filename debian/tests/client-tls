@@ -1,0 +1,181 @@
+#!/usr/bin/python3
+"""Client-only mTLS check against a disposable HTTPS command endpoint."""
+
+from __future__ import annotations
+
+import json
+import ssl
+import subprocess
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        self.rfile.read(length)
+        body = json.dumps(
+            {"success": True, "data": {"server": {"running": True}, "containers": {}}}
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args: object) -> None:
+        return
+
+
+def openssl(*args: str) -> None:
+    subprocess.run(["openssl", *args], check=True, capture_output=True)
+
+
+def main() -> None:
+    with tempfile.TemporaryDirectory(prefix="chimera-client-tls-") as raw:
+        workdir = Path(raw)
+        san = workdir / "san.cnf"
+        san.write_text(
+            "[v3]\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\n"
+            "extendedKeyUsage=serverAuth\nsubjectAltName=DNS:localhost,IP:127.0.0.1\n",
+            encoding="utf-8",
+        )
+        client_ext = workdir / "client.cnf"
+        client_ext.write_text(
+            "[v3]\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature\n"
+            "extendedKeyUsage=clientAuth\n",
+            encoding="utf-8",
+        )
+        ca_ext = workdir / "ca.cnf"
+        ca_ext.write_text(
+            "[v3]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n",
+            encoding="utf-8",
+        )
+        openssl(
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-subj",
+            "/CN=Chimera Autopkgtest CA",
+            "-keyout",
+            str(workdir / "ca.key"),
+            "-out",
+            str(workdir / "ca.csr"),
+        )
+        openssl(
+            "x509",
+            "-req",
+            "-sha256",
+            "-in",
+            str(workdir / "ca.csr"),
+            "-signkey",
+            str(workdir / "ca.key"),
+            "-out",
+            str(workdir / "ca.crt"),
+            "-days",
+            "1",
+            "-extfile",
+            str(ca_ext),
+            "-extensions",
+            "v3",
+        )
+        openssl(
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-subj",
+            "/CN=localhost",
+            "-keyout",
+            str(workdir / "server.key"),
+            "-out",
+            str(workdir / "server.csr"),
+        )
+        openssl(
+            "x509",
+            "-req",
+            "-in",
+            str(workdir / "server.csr"),
+            "-CA",
+            str(workdir / "ca.crt"),
+            "-CAkey",
+            str(workdir / "ca.key"),
+            "-CAcreateserial",
+            "-out",
+            str(workdir / "server.crt"),
+            "-days",
+            "1",
+            "-extfile",
+            str(san),
+            "-extensions",
+            "v3",
+        )
+        openssl(
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-subj",
+            "/CN=chimera-admin-test",
+            "-keyout",
+            str(workdir / "client.key"),
+            "-out",
+            str(workdir / "client.csr"),
+        )
+        openssl(
+            "x509",
+            "-req",
+            "-in",
+            str(workdir / "client.csr"),
+            "-CA",
+            str(workdir / "ca.crt"),
+            "-CAkey",
+            str(workdir / "ca.key"),
+            "-CAcreateserial",
+            "-out",
+            str(workdir / "client.crt"),
+            "-days",
+            "1",
+            "-extfile",
+            str(client_ext),
+            "-extensions",
+            "v3",
+        )
+        (workdir / "server.key").chmod(0o600)
+        (workdir / "client.key").chmod(0o600)
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.load_cert_chain(workdir / "server.crt", workdir / "server.key")
+        context.load_verify_locations(workdir / "ca.crt")
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+        port = httpd.server_address[1]
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            subprocess.run(
+                [
+                    "chimeractl",
+                    "status",
+                    "--host",
+                    f"localhost:{port}",
+                    "--tls-ca",
+                    str(workdir / "ca.crt"),
+                    "--tls-cert",
+                    str(workdir / "client.crt"),
+                    "--tls-key",
+                    str(workdir / "client.key"),
+                ],
+                check=True,
+            )
+        finally:
+            httpd.shutdown()
+
+
+if __name__ == "__main__":
+    main()

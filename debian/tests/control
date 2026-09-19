@@ -1,0 +1,22 @@
+# Role-absence assertions are valid only in a clean testbed that installs that
+# test's Depends. Do not chain these tests on autopkgtest-virt-null after a
+# metapackage install; run each test-name in a fresh environment.
+Tests: common
+Depends: python3-chimera-spawn, python3
+Restrictions: allow-stderr, superficial
+
+Tests: client
+Depends: chimera-spawn-client, python3, openssl
+Restrictions: allow-stderr, superficial
+
+Tests: server
+Depends: chimera-spawn-server, python3
+Restrictions: allow-stderr, superficial
+
+Tests: installed
+Depends: chimera-spawn, python3
+Restrictions: allow-stderr
+
+Tests: client-tls
+Depends: chimera-spawn-client, python3, openssl
+Restrictions: allow-stderr

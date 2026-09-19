@@ -1,0 +1,17 @@
+---
+# Compatibility Profile - Host UID/GID mapping with shared host networking
+
+compat:
+  description: "Compatibility: host UID/GID mapping with shared host networking."
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    NotifyReady=yes
+    PrivateUsers=no
+    [Network]
+    Private=no
+    VirtualEthernet=no
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M

@@ -1,0 +1,12 @@
+usr/lib/python3*/dist-packages/chimera/__init__.py
+usr/lib/python3*/dist-packages/chimera/__main__.py
+usr/lib/python3*/dist-packages/chimera/errors.py
+usr/lib/python3*/dist-packages/chimera/pydantic_compat.py
+usr/lib/python3*/dist-packages/chimera/runtime.py
+usr/lib/python3*/dist-packages/chimera/endpoint.py
+usr/lib/python3*/dist-packages/chimera/tls.py
+usr/lib/python3*/dist-packages/chimera/models
+usr/lib/python3*/dist-packages/chimera/utils/__init__.py
+usr/lib/python3*/dist-packages/chimera/utils/unixsocket.py
+usr/lib/python3*/dist-packages/*.dist-info
+LICENSE.txt usr/share/doc/python3-chimera-spawn
