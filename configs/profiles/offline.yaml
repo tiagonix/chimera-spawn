@@ -1,0 +1,17 @@
+---
+# Offline Profile - Private network namespace with loopback only
+
+offline:
+  description: "User-isolated container with loopback-only networking and no external connectivity."
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    NotifyReady=yes
+    Parameters=systemd.mask=systemd-networkd-wait-online.service
+    [Network]
+    Private=yes
+    VirtualEthernet=no
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M

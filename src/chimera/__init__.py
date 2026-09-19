@@ -8,18 +8,30 @@ Author: Thiago Camargo <thiagocmc@proton.me>
 License: AGPL-3.0-only
 """
 
-__version__ = "1.0.0"
-__author__ = "Chimera Development Team"
+from importlib.metadata import PackageNotFoundError, version
 
-# Re-export key components for easier access
 from chimera.models.config import ChimeraConfig
-from chimera.models.container import ContainerSpec
+from chimera.models.container import ContainerRecord, ContainerSpec
 from chimera.models.image import ImageSpec
 from chimera.models.profile import ProfileSpec
 
+
+def package_version() -> str:
+    """Return the installed distribution version when metadata is available."""
+    try:
+        return version("chimera-spawn")
+    except PackageNotFoundError:
+        return "0+unknown"
+
+
+__version__ = package_version()
+__author__ = "Thiago Camargo"
+
 __all__ = [
     "ChimeraConfig",
-    "ContainerSpec", 
+    "ContainerRecord",
+    "ContainerSpec",
     "ImageSpec",
     "ProfileSpec",
+    "package_version",
 ]

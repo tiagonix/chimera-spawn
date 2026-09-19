@@ -6,7 +6,7 @@ containers:
     ensure: present
     state: running
     image: ubuntu-24.04-cloud-tar
-    profile: non_isolated
+    profile: compat
     cloud_init:
       template: ubuntu_base
       meta_data:
@@ -16,7 +16,7 @@ containers:
     ensure: present
     state: running
     image: ubuntu-22.04-cloud-tar
-    profile: isolated
+    profile: standard
     cloud_init:
       template: ubuntu_base
       
@@ -24,10 +24,10 @@ containers:
 #    ensure: present
 #    state: running
 #    image: debian-12-cloud-raw
-#    profile: non_isolated
+#    profile: compat
 #
 #  debian13-build:
 #    ensure: present
 #    state: running
 #    image: debian-13-cloud-raw
-#    profile: non_isolated
+#    profile: compat

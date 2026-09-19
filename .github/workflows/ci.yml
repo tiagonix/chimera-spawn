@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    name: Static source quality
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install source-quality dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            python3 python3-mypy python3-flake8 black python3-aiohttp \
+            python3-dbus-next \
+            python3-httpx python3-jinja2 python3-pydantic python3-rich \
+            python3-ruamel.yaml python3-typer python3-watchfiles \
+            python3-websockets openssl
+      - name: Record provenance
+        run: |
+          cat /etc/os-release
+          /usr/bin/python3 --version
+          dpkg-query -W -f='${Package} ${Version}\n' \
+            python3 python3-mypy python3-flake8 black python3-aiohttp \
+            python3-dbus-next \
+            python3-httpx python3-jinja2 python3-pydantic python3-rich \
+            python3-ruamel.yaml python3-typer python3-watchfiles \
+            python3-websockets openssl
+      - name: Run static source quality
+        run: |
+          black --check src tests
+          PYTHONNOUSERSITE=1 /usr/bin/python3 -s -m mypy --strict src
+          /usr/bin/python3 -m flake8 src tests
+
+  runtime:
+    name: Runtime (${{ matrix.distribution }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distribution: Ubuntu 24.04
+            image: ubuntu:24.04
+          - distribution: Ubuntu 26.04
+            image: ubuntu:26.04
+          - distribution: Debian 13
+            image: debian:trixie
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime-test dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            python3 python3-pytest python3-pytest-asyncio python3-setuptools \
+            python3-aiohttp python3-dbus-next python3-httpx python3-jinja2 \
+            python3-pydantic python3-rich python3-ruamel.yaml python3-typer \
+            python3-watchfiles python3-websockets openssl
+      - name: Record provenance
+        run: |
+          cat /etc/os-release
+          /usr/bin/python3 --version
+          dpkg-query -W -f='${Package} ${Version}\n' \
+            python3 python3-pytest python3-pytest-asyncio python3-setuptools \
+            python3-aiohttp python3-dbus-next python3-httpx python3-jinja2 \
+            python3-pydantic python3-rich python3-ruamel.yaml python3-typer \
+            python3-watchfiles python3-websockets openssl
+      - name: Run reduced source suite
+        run: |
+          PYTHONNOUSERSITE=1 PYTHONPATH=src \
+            /usr/bin/python3 -s -m pytest -m 'not privileged'
+
+  package-smoke:
+    name: Package metadata smoke
+    runs-on: ubuntu-24.04
+    container: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install changelog parser
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y dpkg-dev
+      - name: Check Debian metadata
+        run: |
+          test -f debian/changelog
+          test -f debian/control
+          test -x debian/rules
+          test -f debian/copyright
+          test -f debian/source/format
+          dpkg-parsechangelog -SSource
+          dpkg-parsechangelog -SVersion
+          dpkg-parsechangelog -SDistribution

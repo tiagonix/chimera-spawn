@@ -10,30 +10,31 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "AGPL-3.0-only"}
 authors = [
-    {name = "Chimera Development Team", email = "dev@chimera.local"},
+    {name = "Thiago Camargo", email = "thiagocmc@proton.me"},
 ]
 keywords = ["systemd", "nspawn", "containers", "orchestration"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: System :: Systems Administration",
 ]
 
-# Ubuntu 24.04 compatible versions
+# Runtime API floors are constrained by supported Debian/Ubuntu archive
+# packages. Do not raise these for APIs unavailable on Ubuntu 24.04,
+# Ubuntu 26.04, or Debian 13. python-systemd and aiofiles were removed as
+# unused-dependency cleanup: src/ and tests/ do not import them.
 dependencies = [
-    "pydantic>=1.10.14",
+    "pydantic>=1.10.14,<3",
     "typer>=0.9.0",
     "rich>=13.7.1",
     "dbus-next>=0.2.3",
-    "python-systemd>=235",
     "ruamel.yaml>=0.17.21",
     "jinja2>=3.1.2",
     "watchfiles>=0.21.0",
-    "aiofiles>=23.2.1",
     "httpx>=0.26.0",
     "aiohttp>=3.9.1",
     "websockets>=10.4",
@@ -51,26 +52,28 @@ dev = [
 
 [project.scripts]
 chimeractl = "chimera.cli.main:main"
-chimera-agent = "chimera.agent.__main__:main"
+chimera-server = "chimera.server.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-chimera = ["py.typed"]
-
 [tool.black]
 line-length = 100
-target-version = ['py311']
+target-version = ['py312']
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "RUF"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/chimera/cli/main.py" = ["B008"]
+
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -82,3 +85,6 @@ mypy_path = "src"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-v --tb=short"
+markers = [
+    "privileged: requires an explicitly designated disposable systemd/nspawn testbed",
+]

@@ -1,0 +1,16 @@
+usr/bin/chimera-server
+usr/lib/python3*/dist-packages/chimera/server
+usr/lib/python3*/dist-packages/chimera/providers
+usr/lib/python3*/dist-packages/chimera/utils/fs.py
+usr/lib/python3*/dist-packages/chimera/utils/logging.py
+usr/lib/python3*/dist-packages/chimera/utils/observation.py
+usr/lib/python3*/dist-packages/chimera/utils/rendering.py
+usr/lib/python3*/dist-packages/chimera/utils/systemd.py
+usr/lib/python3*/dist-packages/chimera/utils/templates.py
+configs/images usr/share/chimera-spawn/catalog
+configs/profiles usr/share/chimera-spawn/catalog
+configs/cloud-init usr/share/chimera-spawn/catalog
+debian/chimera.yaml etc/chimera-spawn
+docs/architecture.md usr/share/doc/chimera-spawn-server
+docs/security.md usr/share/doc/chimera-spawn-server
+docs/migration.md usr/share/doc/chimera-spawn-server

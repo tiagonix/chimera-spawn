@@ -1,0 +1,15 @@
+---
+# Private Profile - systemd-nspawn zone with host DHCP/masquerade
+
+private:
+  description: "User-isolated private networking through the host systemd-networkd nspawn zone."
+  nspawn_config_content: |
+    [Exec]
+    Boot=true
+    NotifyReady=yes
+    [Network]
+    Zone=chimera
+  systemd_override_content: |
+    [Service]
+    CPUQuota=400%
+    MemoryMax=4096M

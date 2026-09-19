@@ -1,0 +1,13 @@
+chimera-spawn (1.0.0-1) unstable; urgency=medium
+
+  * Provide Chimera Spawn 1.0.0 as a client/server systemd-nspawn manager
+    with local Unix-domain HTTP/WebSocket access and optional mutually
+    authenticated TLS remote access.
+  * Build four binary packages from one source package: python3-chimera-spawn,
+    chimera-spawn-client, chimera-spawn-server, and the chimera-spawn
+    metapackage.
+  * Keep remote listeners disabled until an administrator supplies TLS
+    material. Package installation does not generate certificates or private
+    keys.
+
+ -- Thiago Camargo <thiagocmc@proton.me>  Tue, 15 Sep 2026 12:00:00 +0000

@@ -1,0 +1,75 @@
+.TH CHIMERA-SERVER 1 "September 2026" "Chimera Spawn 1.0.0" "System Administration"
+.SH NAME
+chimera-server \- privileged Chimera Spawn lifecycle server
+.SH SYNOPSIS
+.B chimera-server
+[\fIOPTIONS\fR]
+.B chimera-server --help
+.SH DESCRIPTION
+.B chimera-server
+is the durable lifecycle authority for managed systemd-nspawn containers.
+It owns
+.IR /var/lib/chimera-spawn/state.json ,
+reconciles desired state, and serves the same command API over a Unix socket
+and, when explicitly configured, an authenticated TLS listener.
+.PP
+Unix clients are identified with
+.BR SO_PEERCRED .
+Remote access requires TLS 1.2 or newer with
+.B client certificates required.
+Package installation does not enable the network listener or generate TLS keys.
+.PP
+Interactive
+.B exec
+sessions launch
+.B systemd-run
+inside the target machine with a unique Chimera-owned transient unit.
+Abnormal disconnect stops that exact unit; unrelated units are not touched.
+TTY
+.B exec
+and
+.B shell
+sessions apply a validated client
+.B TERM
+with
+.BR --setenv=TERM=... ;
+they do not forward arbitrary process environment.
+.SH OPTIONS
+.TP
+.B \-\-config-dir \fIPATH\fR
+Configuration directory. Installed default:
+.IR /etc/chimera-spawn .
+.TP
+.B \-\-state-dir \fIPATH\fR
+Durable state directory. Installed default:
+.IR /var/lib/chimera-spawn .
+.TP
+.B \-\-socket \fIPATH\fR
+Unix listen path. Installed default:
+.IR /run/chimera-spawn/server.sock .
+.TP
+.B \-\-catalog-dir \fIPATH\fR
+Static image, profile, and cloud-init catalogs.
+.SH FILES
+.TP
+.I /etc/chimera-spawn/chimera.yaml
+Site configuration.
+.TP
+.I /var/lib/chimera-spawn/state.json
+Managed-container registry. Purging this package does not delete it,
+managed machines, or administrator-provided TLS material.
+.TP
+.I /lib/systemd/system/chimera-server.service
+Installed systemd unit.
+.SH SEE ALSO
+.BR chimeractl (1),
+.BR systemd-nspawn (1),
+.BR systemd-run (1)
+.PP
+Project documentation:
+.IR /usr/share/doc/chimera-spawn-server/architecture.md ,
+.IR /usr/share/doc/chimera-spawn-server/security.md .
+.SH AUTHOR
+Thiago Camargo
+.SH COPYRIGHT
+AGPL-3.0-only

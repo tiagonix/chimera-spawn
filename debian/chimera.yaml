@@ -1,0 +1,20 @@
+---
+# Site configuration. Packaged image, profile, and cloud-init defaults live
+# under /usr/share/chimera-spawn/catalog and may be overridden here.
+server:
+  reconciliation_interval: 30
+  log_level: INFO
+  admin_group: chimera-admin
+  # null keeps the remote TLS listener disabled. Unix-socket access still starts.
+  host: null
+  port: 8080
+  # Administrators provide TLS material; package installation does not generate it.
+  # tls:
+  #   certificate: /etc/chimera-spawn/tls/server.crt
+  #   private_key: /etc/chimera-spawn/tls/server.key
+  #   client_ca: /etc/chimera-spawn/tls/client-ca.crt
+
+systemd:
+  machines_dir: /var/lib/machines
+  nspawn_dir: /etc/systemd/nspawn
+  system_dir: /etc/systemd/system

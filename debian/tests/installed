@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+python3 - <<'PY'
+from importlib.metadata import version
+import chimera
+
+assert chimera.__version__ == version("chimera-spawn")
+assert "src/" not in chimera.__file__.replace("\\", "/")
+print("installed", chimera.__version__, chimera.__file__)
+PY
+chimeractl --help >/dev/null
+chimera-server --help >/dev/null
+test -f /etc/chimera-spawn/chimera.yaml
+test -d /usr/share/chimera-spawn/catalog
+unit=$(ls /usr/lib/systemd/system/chimera-server.service /lib/systemd/system/chimera-server.service 2>/dev/null | head -n1)
+test -n "$unit"
+command -v systemd-analyze >/dev/null && systemd-analyze verify "$unit"
+python3 - <<'PY'
+import chimera.cli
+import chimera.server
+import chimera.providers
+
+print("meta-imports-ok")
+PY

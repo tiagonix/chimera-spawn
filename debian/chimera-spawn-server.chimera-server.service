@@ -1,0 +1,22 @@
+[Unit]
+Description=Chimera Spawn Server
+Documentation=https://github.com/tiagonix/chimera-spawn
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/chimera-spawn/chimera.yaml
+
+[Service]
+Type=simple
+User=root
+Group=chimera-admin
+UMask=0007
+StateDirectory=chimera-spawn
+StateDirectoryMode=0700
+RuntimeDirectory=chimera-spawn
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/chimera-server
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

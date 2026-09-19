@@ -1,18 +1,18 @@
 ---
-# Privileged Profile - Full capabilities for special use cases
+# Privileged Profile - Full capabilities for trusted workloads
 
 privileged:
+  description: "Trusted workloads requiring full Linux capabilities with shared host networking."
   nspawn_config_content: |
     [Exec]
     Boot=true
+    NotifyReady=yes
     PrivateUsers=no
     Capability=all
+    Parameters=systemd.mask=systemd-networkd.service systemd.mask=systemd-networkd-wait-online.service
     [Network]
     Private=no
     VirtualEthernet=no
-    [Files]
-    Bind=/dev/loop0
-    Bind=/dev/loop-control
   systemd_override_content: |
     [Service]
     CPUQuota=400%

@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+test -x /usr/bin/chimera-server
+test ! -e /usr/bin/chimeractl
+test -f /usr/lib/systemd/system/chimera-server.service -o -f /lib/systemd/system/chimera-server.service
+test -f /etc/chimera-spawn/chimera.yaml
+test -d /usr/share/chimera-spawn/catalog
+chimera-server --help >/dev/null
+python3 - <<'PY'
+import chimera.server
+import chimera.providers
+import chimera.utils.fs
+import chimera.utils.systemd
+from pathlib import Path
+from ruamel.yaml import YAML
+
+print("server-imports-ok")
+data = YAML(typ="safe").load(Path("/etc/chimera-spawn/chimera.yaml").read_text(encoding="utf-8"))
+assert data["server"].get("host") is None
+print("remote-disabled-by-default")
+PY
+getent group chimera-admin >/dev/null
+python3 - <<'PY'
+import subprocess
+
+depends = subprocess.check_output(
+    ["dpkg-query", "-W", "-f", "${Depends}", "chimera-spawn-server"],
+    text=True,
+)
+assert "chimera-spawn-client" not in depends, depends
+print("server-does-not-depend-on-client")
+PY
+unit=$(ls /usr/lib/systemd/system/chimera-server.service /lib/systemd/system/chimera-server.service 2>/dev/null | head -n1)
+if command -v systemd-analyze >/dev/null; then
+    systemd-analyze verify "$unit"
+fi

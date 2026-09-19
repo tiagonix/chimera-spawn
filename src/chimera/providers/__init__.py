@@ -10,6 +10,6 @@ from chimera.providers.registry import ProviderRegistry
 
 __all__ = [
     "BaseProvider",
-    "ProviderStatus", 
     "ProviderRegistry",
+    "ProviderStatus",
 ]

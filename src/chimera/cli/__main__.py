@@ -7,6 +7,5 @@ License: AGPL-3.0-only
 
 from chimera.cli.main import main
 
-
 if __name__ == "__main__":
     main()
