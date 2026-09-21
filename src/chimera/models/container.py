@@ -132,7 +132,12 @@ class ContainerSpec(IgnoreExtraModel):
     name: str = Field(..., description="Container name")
     ensure: Literal["present", "absent"] = Field(default="present")
     state: Literal["running", "stopped"] = Field(default="running")
-    image: str = Field(..., description="Image name to use")
+    image: str = Field(..., description="Canonical SimpleStreams product identity")
+    image_source: str = Field(..., description="Configured SimpleStreams source name")
+    image_artifact: Literal["rootfs", "disk"] = Field(
+        default="rootfs",
+        description="Local materialization kind: directory rootfs or raw disk",
+    )
     profile: str = Field(default="standard", description="Profile name")
     cloud_init: CloudInitSpec | None = None
     autostart: bool = Field(default=True)
@@ -142,7 +147,7 @@ class ContainerSpec(IgnoreExtraModel):
     resource_controls: ResourceControlSpec | None = None
 
     # Internal fields for resolved catalog objects; never persisted as identity.
-    _image_spec: Any | None = PrivateAttr(default=None)
+    _effective_image: Any | None = PrivateAttr(default=None)
     _profile_spec: Any | None = PrivateAttr(default=None)
 
     @validated_field("name")
@@ -154,7 +159,9 @@ class ContainerSpec(IgnoreExtraModel):
                 "must use 1-63 letters, digits, dots, underscores, or hyphens; "
                 "it cannot contain '..'"
             )
-        return value
+        from chimera.images.identity import require_unreserved_public_name
+
+        return require_unreserved_public_name(value, kind="container")
 
 
 class ContainerRecord(ForbidExtraModel):
@@ -219,6 +226,8 @@ class ContainerRecord(ForbidExtraModel):
         return {
             "name": self.spec.name,
             "image": self.spec.image,
+            "image_source": self.spec.image_source,
+            "image_artifact": self.spec.image_artifact,
             "profile": self.spec.profile,
             "cloud_init": (
                 model_dump(self.spec.cloud_init, exclude_none=True)

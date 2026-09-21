@@ -151,3 +151,30 @@ def _replace_non_directory_leaf(parent_fd: int, leaf: str) -> None:
             status=502,
         )
     os.unlink(leaf, dir_fd=parent_fd)
+
+
+def normalize_nspawn_machine_id(root: Path) -> None:
+    """Turn an uninitialized LXD machine-id into the empty file systemd-nspawn expects."""
+    path = root / "etc" / "machine-id"
+    try:
+        path_stat = os.lstat(path)
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+    if not stat.S_ISREG(path_stat.st_mode):
+        return
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return
+    stripped = data.strip()
+    if not stripped:
+        if data:
+            write_contained_text(root, "etc/machine-id", "", mode=0o644)
+        return
+    if len(stripped) == 32 and all(
+        character in b"0123456789abcdef" for character in stripped.lower()
+    ):
+        return
+    write_contained_text(root, "etc/machine-id", "", mode=0o644)

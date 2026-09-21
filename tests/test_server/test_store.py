@@ -14,7 +14,13 @@ from chimera.server.store import ContainerStore
 
 def make_record(name: str = "demo") -> ContainerRecord:
     """Create a minimal valid durable container record."""
-    return ContainerRecord(spec=ContainerSpec(name=name, image="ubuntu"))
+    return ContainerRecord(
+        spec=ContainerSpec(
+            name=name,
+            image="com.ubuntu.cloud:server:24.04:amd64",
+            image_source="ubuntu",
+        )
+    )
 
 
 def test_store_round_trip_preserves_current_durable_state(tmp_path):
@@ -24,7 +30,11 @@ def test_store_round_trip_preserves_current_durable_state(tmp_path):
     store.load()
     store.add(
         ContainerRecord(
-            spec=ContainerSpec(name="demo", image="ubuntu"),
+            spec=ContainerSpec(
+                name="demo",
+                image="com.ubuntu.cloud:server:24.04:amd64",
+                image_source="ubuntu",
+            ),
             provisioning_state="complete",
             provisioning_fingerprint="creation-fingerprint",
             host_config_fingerprint="host-fingerprint",
@@ -43,6 +53,29 @@ def test_store_round_trip_preserves_current_durable_state(tmp_path):
     assert record.materialization_id == "device:inode"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert not list(path.parent.glob(".state.json.*"))
+
+
+def test_store_round_trip_preserves_source_product_and_artifact(tmp_path):
+    """Durable image identity is source, canonical product, and artifact kind."""
+    path = tmp_path / "state" / "state.json"
+    store = ContainerStore(path)
+    store.load()
+    store.add(
+        ContainerRecord(
+            spec=ContainerSpec(
+                name="demo",
+                image="com.ubuntu.cloud:server:26.04:amd64",
+                image_source="ubuntu",
+                image_artifact="disk",
+            )
+        )
+    )
+    reloaded = ContainerStore(path)
+    reloaded.load()
+    record = reloaded.get("demo")
+    assert record.spec.image_source == "ubuntu"
+    assert record.spec.image == "com.ubuntu.cloud:server:26.04:amd64"
+    assert record.spec.image_artifact == "disk"
 
 
 def test_store_fails_closed_on_invalid_document(tmp_path):
@@ -74,7 +107,13 @@ def test_import_is_all_or_nothing(tmp_path):
         (lambda store: store.add(make_record("new")), ["existing"]),
         (
             lambda store: store.replace(
-                ContainerRecord(spec=ContainerSpec(name="existing", image="replacement"))
+                ContainerRecord(
+                    spec=ContainerSpec(
+                        name="existing",
+                        image="com.ubuntu.cloud:server:24.04:amd64",
+                        image_source="ubuntu",
+                    )
+                )
             ),
             ["existing"],
         ),

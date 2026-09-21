@@ -194,6 +194,14 @@ def _assert_exec_does_not_inject_term(argv: list[str]) -> None:
     assert expected not in piped.stdout.replace("\r", ""), piped.stdout
 
 
+def _qualification_image() -> str:
+    return os.environ.get("CHIMERA_TEST_IMAGE", "resolute")
+
+
+def _qualification_source() -> str:
+    return os.environ.get("CHIMERA_TEST_IMAGE_SOURCE", "ubuntu")
+
+
 def _ctl(
     *args: str, expect_failure: bool = False, timeout: int = COMMAND_TIMEOUT
 ) -> subprocess.CompletedProcess[str]:
@@ -645,8 +653,8 @@ def unique_name(privileged_package):
 
 def test_exec_literal_argv_incremental_output_and_status(privileged_package, unique_name):
     """Production systemd-run exec preserves argv, streams output, and returns status."""
-    image = os.environ.get("CHIMERA_TEST_IMAGE", "ubuntu-24.04-cloud-tar")
-    launch = _ctl("launch", image, unique_name)
+    image = _qualification_image()
+    launch = _ctl("launch", image, unique_name, "--source", _qualification_source())
     privileged_package["log"].append(("container", unique_name, launch.returncode))
     printed = _ctl(
         "exec",
@@ -720,8 +728,8 @@ def test_exec_literal_argv_incremental_output_and_status(privileged_package, uni
 
 def test_native_shell_session(privileged_package, unique_name):
     """Production machinectl shell preserves multi-command, prompt, resize, and interrupt."""
-    image = os.environ.get("CHIMERA_TEST_IMAGE", "ubuntu-24.04-cloud-tar")
-    launch = _ctl("launch", image, unique_name)
+    image = _qualification_image()
+    launch = _ctl("launch", image, unique_name, "--source", _qualification_source())
     privileged_package["log"].append(("container", unique_name, launch.returncode))
     elapsed = _drive_native_shell(
         ["chimeractl", "shell", unique_name], unique_name, privileged_package
@@ -732,8 +740,8 @@ def test_native_shell_session(privileged_package, unique_name):
 
 def test_stop_start_and_server_restart_persistence(privileged_package, unique_name):
     """Desired stopped state survives server restart and is not recreated running."""
-    image = os.environ.get("CHIMERA_TEST_IMAGE", "ubuntu-24.04-cloud-tar")
-    launch = _ctl("launch", image, unique_name)
+    image = _qualification_image()
+    launch = _ctl("launch", image, unique_name, "--source", _qualification_source())
     privileged_package["log"].append(("container", unique_name, launch.returncode))
     stopped = _ctl("stop", unique_name)
     assert stopped.returncode == 0
@@ -866,8 +874,18 @@ def test_remote_tls_lifecycle_when_explicitly_enabled(privileged_package, unique
         time.sleep(1)
         status = _run(["chimeractl", "status", *remote])
         assert status.returncode == 0, status.stderr
-        image = os.environ.get("CHIMERA_TEST_IMAGE", "ubuntu-24.04-cloud-tar")
-        launch = _run(["chimeractl", "launch", image, unique_name, *remote])
+        image = _qualification_image()
+        launch = _run(
+            [
+                "chimeractl",
+                "launch",
+                image,
+                unique_name,
+                "--source",
+                _qualification_source(),
+                *remote,
+            ]
+        )
         privileged_package["log"].append(("container", unique_name, launch.returncode))
         assert launch.returncode == 0, launch.stderr
         journal = _run(["journalctl", "-u", "chimera-server", "-n", "200", "--no-pager"])

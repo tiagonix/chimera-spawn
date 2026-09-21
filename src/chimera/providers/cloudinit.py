@@ -80,7 +80,7 @@ class CloudInitProvider(BaseProvider[ContainerSpec]):
             )
         payload = creation_render_payload(
             container_name=spec.name,
-            image=spec._image_spec,
+            image=spec._effective_image,
             cloud_init=spec.cloud_init,
             proxy=self.proxy_config,
         )

@@ -16,10 +16,30 @@ from ruamel.yaml import YAML
 
 from chimera.errors import ChimeraError
 from chimera.models.config import ChimeraConfig
-from chimera.models.image import ImageSpec
+from chimera.models.image import (
+    ImageProductPolicy,
+    ImageSourceSpec,
+    empty_product_policy,
+)
 from chimera.models.profile import ProfileSpec
 
 logger = logging.getLogger(__name__)
+
+
+def _merge_image_source(packaged: dict[str, Any], site: dict[str, Any]) -> dict[str, Any]:
+    """Overlay site source fields onto a packaged source before model validation."""
+    merged = dict(packaged)
+    for key, value in site.items():
+        if key != "products":
+            merged[key] = value
+            continue
+        if not isinstance(value, dict):
+            raise ValueError("products must be a mapping")
+        products = dict(merged.get("products") or {})
+        for product, policy in value.items():
+            products[product] = policy
+        merged["products"] = products
+    return merged
 
 
 @dataclass
@@ -27,14 +47,14 @@ class CatalogSnapshot:
     """A completely parsed catalog, ready to replace the active snapshot."""
 
     config: ChimeraConfig
-    images: dict[str, ImageSpec]
+    image_sources: dict[str, ImageSourceSpec]
     profiles: dict[str, ProfileSpec]
     cloud_init_templates: dict[str, dict[str, Any]]
     source_files: list[Path]
 
 
 class ConfigManager:
-    """Load static service configuration and layered image/profile catalogs."""
+    """Load service configuration and layered image, profile, and cloud-init catalogs."""
 
     def __init__(self, config_dir: Path, catalog_dir: Path | None = None):
         """Initialize configuration manager."""
@@ -43,7 +63,7 @@ class ConfigManager:
         self.yaml = YAML()
         self.yaml.preserve_quotes = True
         self.config: ChimeraConfig | None = None
-        self.images: dict[str, ImageSpec] = {}
+        self.image_sources: dict[str, ImageSourceSpec] = {}
         self.profiles: dict[str, ProfileSpec] = {}
         self.cloud_init_templates: dict[str, dict[str, Any]] = {}
         self.source_files: list[Path] = []
@@ -89,7 +109,7 @@ class ConfigManager:
 
         self.snapshot = snapshot
         self.config = snapshot.config
-        self.images = snapshot.images
+        self.image_sources = snapshot.image_sources
         self.profiles = snapshot.profiles
         self.cloud_init_templates = snapshot.cloud_init_templates
         self.source_files = snapshot.source_files
@@ -115,7 +135,7 @@ class ConfigManager:
             ) from error
         try:
             config = ChimeraConfig(**main_data)
-            images, image_files = self._load_models("images", ImageSpec)
+            image_sources, image_source_files = self._load_image_sources()
             profiles, profile_files = self._load_models("profiles", ProfileSpec)
             cloud_init_templates, cloud_init_files = self._load_templates()
         except (OSError, ValidationError, ValueError, TypeError) as error:
@@ -129,10 +149,15 @@ class ConfigManager:
 
         return CatalogSnapshot(
             config=config,
-            images=images,
+            image_sources=image_sources,
             profiles=profiles,
             cloud_init_templates=cloud_init_templates,
-            source_files=[config_file, *image_files, *profile_files, *cloud_init_files],
+            source_files=[
+                config_file,
+                *image_source_files,
+                *profile_files,
+                *cloud_init_files,
+            ],
         )
 
     async def _read_yaml(self, file_path: Path) -> dict[str, Any]:
@@ -171,6 +196,49 @@ class ConfigManager:
                 source_files.append(yaml_file)
         return resources, source_files
 
+    def _load_image_sources(self) -> tuple[dict[str, ImageSourceSpec], list[Path]]:
+        """Load image sources, merging site scalars and exact product policies first."""
+        layered: list[dict[str, dict[str, Any]]] = []
+        source_files: list[Path] = []
+        for directory in self._catalog_directories("images"):
+            raw, files = self._read_named_raw(directory)
+            layered.append(raw)
+            source_files.extend(files)
+        names: list[str] = []
+        for raw in layered:
+            for name in raw:
+                if name not in names:
+                    names.append(name)
+        sources: dict[str, ImageSourceSpec] = {}
+        for name in names:
+            spec_data: dict[str, Any] | None = None
+            for raw in layered:
+                layer = raw.get(name)
+                if layer is None:
+                    continue
+                spec_data = layer if spec_data is None else _merge_image_source(spec_data, layer)
+            if spec_data is None:
+                continue
+            sources[name] = ImageSourceSpec(name=name, **spec_data)
+        return sources, source_files
+
+    def _read_named_raw(self, directory: Path) -> tuple[dict[str, dict[str, Any]], list[Path]]:
+        """Read named YAML mappings without constructing models."""
+        resources: dict[str, dict[str, Any]] = {}
+        source_files: list[Path] = []
+        if not directory.exists():
+            return resources, source_files
+        for yaml_file in sorted(directory.glob("*.yaml")):
+            data = self._read_yaml_sync(yaml_file) or {}
+            if not isinstance(data, dict):
+                raise ValueError(f"{yaml_file} must contain a mapping")
+            for name, spec in data.items():
+                if not isinstance(name, str) or not isinstance(spec, dict):
+                    raise ValueError(f"{yaml_file} entries must map names to mappings")
+                resources[name] = dict(spec)
+            source_files.append(yaml_file)
+        return resources, source_files
+
     def _load_templates(self) -> tuple[dict[str, dict[str, Any]], list[Path]]:
         """Load cloud-init templates, letting local files override defaults."""
         templates: dict[str, dict[str, Any]] = {}
@@ -198,9 +266,28 @@ class ConfigManager:
             raise ValueError(f"{file_path} must contain a mapping")
         return dict(data)
 
-    def get_image_spec(self, name: str) -> ImageSpec | None:
-        """Get image specification by name."""
-        return self.images.get(name)
+    def get_image_source_spec(self, name: str) -> ImageSourceSpec | None:
+        """Get a configured SimpleStreams image source by name."""
+        return self.image_sources.get(name)
+
+    def get_product_policy(self, source_name: str, canonical_product: str) -> ImageProductPolicy:
+        """Return the exact product policy, or an empty policy when none is declared."""
+        source = self.image_sources.get(source_name)
+        if source is None:
+            return empty_product_policy()
+        return source.products.get(canonical_product, empty_product_policy())
+
+    def list_image_sources(self) -> dict[str, dict[str, Any]]:
+        """Return configured SimpleStreams sources without network access."""
+        sources: dict[str, dict[str, Any]] = {}
+        for name, spec in self.image_sources.items():
+            sources[name] = {
+                "name": name,
+                "url": spec.url,
+                "metadata_verify": spec.metadata_verify,
+                "keyring": spec.keyring,
+            }
+        return sources
 
     def get_profile_spec(self, name: str) -> ProfileSpec | None:
         """Get profile specification by name."""

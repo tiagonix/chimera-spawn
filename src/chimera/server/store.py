@@ -43,6 +43,8 @@ CURRENT_SPEC_FIELDS = frozenset(
         "ensure",
         "state",
         "image",
+        "image_source",
+        "image_artifact",
         "profile",
         "cloud_init",
         "autostart",
@@ -52,6 +54,7 @@ CURRENT_SPEC_FIELDS = frozenset(
         "resource_controls",
     }
 )
+OPTIONAL_SPEC_FIELDS: frozenset[str] = frozenset()
 
 
 class _PostPublicationWriteError(Exception):
@@ -129,18 +132,25 @@ class ContainerStore:
         if not isinstance(spec, dict):
             raise StoreCorruptionError("container record spec must be an object")
         ContainerStore._require_current_fields(
-            spec, CURRENT_SPEC_FIELDS, description="container record spec"
+            spec,
+            CURRENT_SPEC_FIELDS,
+            optional=OPTIONAL_SPEC_FIELDS,
+            description="container record spec",
         )
         return model_validate(ContainerRecord, value)
 
     @staticmethod
     def _require_current_fields(
-        value: dict[str, Any], expected: frozenset[str], *, description: str
+        value: dict[str, Any],
+        expected: frozenset[str],
+        *,
+        description: str,
+        optional: frozenset[str] = frozenset(),
     ) -> None:
-        """Reject persisted fields that do not exactly match the current schema."""
+        """Reject persisted fields that do not match the current schema."""
         fields = set(value)
         missing = sorted(expected - fields)
-        unexpected = sorted(fields - expected)
+        unexpected = sorted(fields - expected - optional)
         if missing or unexpected:
             problems: list[str] = []
             if missing:

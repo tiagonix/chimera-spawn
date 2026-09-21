@@ -1,45 +1,36 @@
 ---
-# Ubuntu Images Configuration
+# Official Ubuntu cloud images.
 
-ubuntu-26.04-cloud-tar:
-  type: tar
-  verify: signature
-  source: https://cloud-images.ubuntu.com/releases/26.04/release/ubuntu-26.04-server-cloudimg-amd64-root.tar.xz
-  custom_files: []
-  nspawn_parameters:
-    - systemd.mask=tpm-udev.path
-    - systemd.mask=tpm-udev.service
-    - systemd.mask=netplan-configure.service
-    - systemd.mask=systemd-remount-fs.service
-    - systemd.mask=iscsid.socket
-    - systemd.mask=ssh.socket
-
-ubuntu-24.04-cloud-tar:
-  type: tar
-  verify: signature
-  source: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64-root.tar.xz
-  custom_files: []
-  nspawn_parameters:
-    - fstab=no
-    - systemd.mask=systemd-resolved.service
-    - systemd.mask=systemd-networkd-wait-online.service
-    - systemd.mask=systemd-remount-fs.service
-    - systemd.mask=tpm-udev.service
-    - systemd.mask=iscsid.socket
-    - systemd.mask=ssh.socket
-
-ubuntu-22.04-cloud-tar:
-  type: tar
-  verify: signature
-  source: https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64-root.tar.xz
-  custom_files: []
-  nspawn_parameters:
-    - fstab=no
-    - systemd.mask=systemd-resolved.service
-    - systemd.mask=systemd-networkd-wait-online.service
-    - systemd.mask=iscsid.socket
-    - systemd.mask=ssh.service
-    - systemd.mask=snapd.service
-    - systemd.mask=snap-lxd-29351.mount
-    - systemd.mask=snap-core20-2379.mount
-    - systemd.mask=snap-snapd-21759.mount
+ubuntu:
+  url: https://cloud-images.ubuntu.com/releases/
+  metadata_verify: signature
+  keyring: /usr/share/keyrings/ubuntu-cloudimage-keyring.gpg
+  products:
+    "com.ubuntu.cloud:server:22.04:amd64":
+      nspawn_parameters:
+        - fstab=no
+        - systemd.mask=systemd-resolved.service
+        - systemd.mask=systemd-networkd-wait-online.service
+        - systemd.mask=iscsid.socket
+        - systemd.mask=ssh.service
+        - systemd.mask=snapd.service
+        - systemd.mask=snap-lxd-29351.mount
+        - systemd.mask=snap-core20-2379.mount
+        - systemd.mask=snap-snapd-21759.mount
+    "com.ubuntu.cloud:server:24.04:amd64":
+      nspawn_parameters:
+        - fstab=no
+        - systemd.mask=systemd-resolved.service
+        - systemd.mask=systemd-networkd-wait-online.service
+        - systemd.mask=systemd-remount-fs.service
+        - systemd.mask=tpm-udev.service
+        - systemd.mask=iscsid.socket
+        - systemd.mask=ssh.socket
+    "com.ubuntu.cloud:server:26.04:amd64":
+      nspawn_parameters:
+        - systemd.mask=tpm-udev.path
+        - systemd.mask=tpm-udev.service
+        - systemd.mask=netplan-configure.service
+        - systemd.mask=systemd-remount-fs.service
+        - systemd.mask=iscsid.socket
+        - systemd.mask=ssh.socket

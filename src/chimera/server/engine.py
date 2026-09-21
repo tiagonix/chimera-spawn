@@ -28,6 +28,13 @@ from chimera.models.container import (
     TmpfsMountSpec,
     stable_fingerprint,
 )
+from chimera.images.identity import effective_from_source
+from chimera.images.reference import (
+    list_source_products,
+    resolve_image_reference,
+    resolve_current_artifact,
+)
+from chimera.models.image import ArtifactKind, DEFAULT_ARTIFACT_KIND
 from chimera.providers import ProviderRegistry, ProviderStatus
 from chimera.pydantic_compat import model_copy, model_dump, model_validate
 from chimera.utils.rendering import (
@@ -63,7 +70,7 @@ class StateEngine:
             self.config_manager.apply_snapshot(snapshot)
 
     async def reconcile(self) -> None:
-        """Converge only durable managed records; catalog entries are not resources."""
+        """Converge only durable managed records."""
         async with self._mutation_lock:
             started_at = datetime.now(UTC)
             logger.info("Starting state reconciliation")
@@ -94,12 +101,22 @@ class StateEngine:
         port_forwards: list[PortForwardSpec] | None = None,
         resource_controls: ResourceControlSpec | None = None,
         start: bool = False,
+        image_source: str | None = None,
+        image_artifact: ArtifactKind = DEFAULT_ARTIFACT_KIND,
     ) -> ContainerRecord:
         """Create or resume a durable stopped/running container intent."""
         async with self._mutation_lock:
+            resolution = await resolve_image_reference(
+                self.config_manager,
+                image,
+                explicit_source=image_source,
+                artifact_kind=image_artifact,
+            )
             requested = ContainerSpec(
                 name=name,
-                image=image,
+                image=resolution.effective.canonical_image_id,
+                image_source=resolution.effective.source_name,
+                image_artifact=resolution.effective.artifact_kind,
                 profile=profile,
                 cloud_init=(
                     CloudInitSpec(template=cloud_init_template) if cloud_init_template else None
@@ -168,20 +185,6 @@ class StateEngine:
 
     async def _preflight_new_container_locked(self, spec: ContainerSpec) -> None:
         """Validate a detached copy before a new request can become durable intent."""
-        if spec.name == spec.image:
-            raise ChimeraError(
-                code="conflict",
-                message=f"Container name '{spec.name}' cannot equal its image name.",
-                suggestion="Choose a container name that is not a catalog image.",
-                status=409,
-            )
-        if spec.name in self._catalog_image_names():
-            raise ChimeraError(
-                code="conflict",
-                message=f"'{spec.name}' is reserved for a catalog image.",
-                suggestion="Choose a different container name; image names are not containers.",
-                status=409,
-            )
         for mount in spec.bind_mounts:
             if not await asyncio.to_thread(os.path.exists, mount.source):
                 raise ChimeraError(
@@ -192,8 +195,9 @@ class StateEngine:
                 )
         working = model_copy(spec, deep=True)
         self._attach_catalog(working, require=True)
+        self._reject_unsupported_disk_provisioning(working)
         self._enrich_cloud_init_spec(working)
-        image = working._image_spec
+        image = working._effective_image
         profile = working._profile_spec
         image_provider = self._required_provider("image")
         profile_provider = self._required_provider("profile")
@@ -371,29 +375,35 @@ class StateEngine:
                 await self._record_error_locked(record, error)
                 raise self._host_error("delete", name, error) from error
 
-    async def pull_image(self, name: str) -> None:
-        """Pull one catalog image, never a managed container or whole catalog."""
+    async def pull_image(
+        self,
+        name: str,
+        image_source: str | None = None,
+        image_artifact: ArtifactKind = DEFAULT_ARTIFACT_KIND,
+    ) -> dict[str, Any]:
+        """Pull one resolved SimpleStreams image into the local cache."""
         async with self._mutation_lock:
-            if self.store.contains(name):
-                raise ChimeraError(
-                    code="conflict",
-                    message=f"'{name}' is a managed container and cannot be pulled as an image.",
-                    suggestion="Use a catalog image name, or delete the managed container first.",
-                    status=409,
-                )
-            image = self.config_manager.get_image_spec(name)
-            if image is None:
-                raise ChimeraError(
-                    code="not_found",
-                    message=f"Image '{name}' is not in the Chimera catalog.",
-                    suggestion="Run 'chimeractl image list' to see available images.",
-                    status=404,
-                )
+            resolution = await resolve_image_reference(
+                self.config_manager,
+                name,
+                explicit_source=image_source,
+                artifact_kind=image_artifact,
+            )
+            local_name = resolution.effective.local_image_name
             image_provider = self._required_provider("image")
             try:
-                await image_provider.present(image)
+                await image_provider.validate_spec(resolution.effective)
+                await image_provider.present(resolution.effective)
             except Exception as error:
                 raise self._host_error("pull image", name, error) from error
+            return {
+                "image": resolution.effective.canonical_image_id,
+                "image_source": resolution.effective.source_name,
+                "artifact_kind": resolution.effective.artifact_kind,
+                "requested": name,
+                "local_image_name": local_name,
+                "pulled": True,
+            }
 
     async def import_records(
         self, specs: list[ContainerSpec], *, dry_run: bool = False
@@ -406,13 +416,6 @@ class StateEngine:
             pending: list[str] = []
             for spec in specs:
                 self._validate_legacy_import_spec(spec)
-                if spec.name in self._catalog_image_names():
-                    raise ChimeraError(
-                        code="conflict",
-                        message=f"Cannot import '{spec.name}' because that name is a catalog image.",
-                        suggestion="Rename the legacy container; Chimera will not adopt a base image.",
-                        status=409,
-                    )
                 await self._preflight_import_semantics_locked(spec)
                 container_provider = self._required_provider("container")
                 artifacts = await container_provider.find_host_artifacts(spec)
@@ -482,11 +485,12 @@ class StateEngine:
         """Apply create-equivalent catalog semantics but permit explicit adoption."""
         working = model_copy(spec, deep=True)
         self._attach_catalog(working, require=True)
+        self._reject_unsupported_disk_provisioning(working)
         self._enrich_cloud_init_spec(working)
         image_provider = self._required_provider("image")
         profile_provider = self._required_provider("profile")
         container_provider = self._required_provider("container")
-        await image_provider.validate_spec(working._image_spec)
+        await image_provider.validate_spec(working._effective_image)
         if not await profile_provider.validate_spec(working._profile_spec):
             raise ChimeraError(
                 code="invalid_configuration",
@@ -516,20 +520,7 @@ class StateEngine:
         """Diagnose unmanaged host artifacts without claiming or changing them."""
         container_provider = self._required_provider("container")
         managed_names = {record.name for record in self.store.records()}
-        catalog_images = self._catalog_image_names()
-        list_resources = getattr(container_provider, "list_unmanaged_host_resources", None)
-        if list_resources is None:
-            return {
-                "machines": [],
-                "storage_entries": [],
-                "nspawn_configs": [],
-                "systemd_overrides": [],
-                "catalog_images": [],
-            }
-        try:
-            resources = await list_resources(managed_names, catalog_image_names=catalog_images)
-        except TypeError:
-            resources = await list_resources(managed_names)
+        resources = await container_provider.list_unmanaged_host_resources(managed_names)
         if not isinstance(resources, dict):
             raise ChimeraError(
                 code="host_observation_failed",
@@ -542,7 +533,7 @@ class StateEngine:
                 continue
             names = [item for item in value if isinstance(item, str)]
             normalized[key] = names
-        normalized.setdefault("catalog_images", [])
+        normalized.setdefault("image_caches", [])
         return normalized
 
     async def get_unmanaged_machine_names(self) -> list[str]:
@@ -606,11 +597,18 @@ class StateEngine:
         image_provider = self._required_provider("image")
         profile_provider = self._required_provider("profile")
         errors: list[str] = []
-        for name, image in snapshot.images.items():
-            try:
-                await image_provider.validate_spec(image)
-            except ChimeraError as error:
-                errors.append(f"invalid image '{name}': {error.message}")
+        product_policies = 0
+        for source in snapshot.image_sources.values():
+            for product, policy in source.products.items():
+                product_policies += 1
+                try:
+                    await image_provider.validate_spec(
+                        effective_from_source(source, product, policy, "rootfs")
+                    )
+                except ChimeraError as error:
+                    errors.append(
+                        f"invalid product policy '{source.name}/{product}': {error.message}"
+                    )
         for name, profile in snapshot.profiles.items():
             if not await profile_provider.validate_spec(profile):
                 errors.append(f"invalid profile '{name}'")
@@ -629,10 +627,67 @@ class StateEngine:
             )
         return {
             "valid": True,
-            "images": len(snapshot.images),
+            "image_sources": len(snapshot.image_sources),
+            "product_policies": product_policies,
             "profiles": len(snapshot.profiles),
             "cloud_init_templates": len(snapshot.cloud_init_templates),
         }
+
+    async def describe_image(
+        self,
+        reference: str,
+        image_source: str | None = None,
+        image_artifact: ArtifactKind = DEFAULT_ARTIFACT_KIND,
+    ) -> dict[str, Any]:
+        """Resolve an image reference and report configured, source, and local state."""
+        resolution = await resolve_image_reference(
+            self.config_manager,
+            reference,
+            explicit_source=image_source,
+            artifact_kind=image_artifact,
+        )
+        effective = resolution.effective
+        image_provider = self._required_provider("image")
+        local = await image_provider.inspect_local(effective)
+        artifact = await resolve_current_artifact(self.config_manager, resolution)
+        return {
+            "requested": reference,
+            "source": effective.source_name,
+            "canonical_image_id": effective.canonical_image_id,
+            "artifact_kind": effective.artifact_kind,
+            "artifacts": list(resolution.artifact_kinds),
+            "metadata_verify": effective.source_spec.metadata_verify,
+            "keyring": effective.source_spec.keyring,
+            "aliases": list(resolution.aliases),
+            "release": resolution.release,
+            "version": resolution.version,
+            "variant": resolution.variant,
+            "architecture": resolution.architecture,
+            "custom_files": [
+                {"path": item.path, "ensure": item.ensure, "target": item.target}
+                for item in effective.custom_files
+            ],
+            "nspawn_parameters": list(effective.nspawn_parameters),
+            "local": local,
+            "remote": {
+                "serial": artifact.serial,
+                "url": artifact.url,
+                "sha256": artifact.sha256,
+                "size": artifact.size,
+                "product": artifact.product,
+                "architecture": artifact.architecture,
+                "aliases": list(artifact.aliases),
+                "release": artifact.release,
+                "version": artifact.version,
+                "variant": artifact.variant,
+                "ftype": artifact.ftype,
+                "artifact_kind": artifact.artifact_kind,
+            },
+        }
+
+    async def list_source_images(self, source_name: str) -> list[dict[str, Any]]:
+        """List discoverable products for one configured source."""
+        return await list_source_products(self.config_manager, source_name)
 
     def _lifecycle_context(self, record: ContainerRecord) -> tuple[ContainerSpec, Any]:
         """Build a detached spec for stop/delete/inspect without expanding templates."""
@@ -641,14 +696,21 @@ class StateEngine:
         return spec, self._required_provider("container")
 
     def _attach_catalog(self, spec: ContainerSpec, *, require: bool) -> None:
-        """Resolve image/profile references onto a detached spec copy."""
-        spec._image_spec = self.config_manager.get_image_spec(spec.image)
+        """Resolve image/profile references onto a detached spec copy without network access."""
         spec._profile_spec = self.config_manager.get_profile_spec(spec.profile)
-        if require and spec._image_spec is None:
+        source = self.config_manager.get_image_source_spec(spec.image_source)
+        if source is None:
+            spec._effective_image = None
+        else:
+            policy = self.config_manager.get_product_policy(spec.image_source, spec.image)
+            spec._effective_image = effective_from_source(
+                source, spec.image, policy, spec.image_artifact
+            )
+        if require and spec._effective_image is None:
             raise ChimeraError(
                 code="not_found",
-                message=f"Image '{spec.image}' is not in the Chimera catalog.",
-                suggestion="Run 'chimeractl image list' to see available images.",
+                message=f"Image '{spec.image}' is not available from source '{spec.image_source}'.",
+                suggestion="Run 'chimeractl image source list' or correct image_source on the container.",
                 status=404,
             )
         if require and spec._profile_spec is None:
@@ -663,6 +725,7 @@ class StateEngine:
         """Return a detached copy with catalogs and cloud-init templates expanded."""
         working = model_copy(spec, deep=True)
         self._attach_catalog(working, require=True)
+        self._reject_unsupported_disk_provisioning(working)
         self._enrich_cloud_init_spec(working)
         return working
 
@@ -679,7 +742,7 @@ class StateEngine:
                 suggestion="Correct the container record or add the template to the catalog.",
                 status=422,
             )
-        merged_data = merge_dicts(template_data, model_dump(spec.cloud_init, exclude_unset=True))
+        merged_data = merge_dicts(template_data, model_dump(spec.cloud_init, exclude_none=True))
         merged_data.pop("template", None)
         spec.cloud_init = CloudInitSpec(**merged_data)
 
@@ -860,19 +923,10 @@ class StateEngine:
         self.store.replace(current)
 
     async def _ensure_image_for_clone(self, spec: ContainerSpec) -> None:
-        """Pull a missing image only when a new materialization must be cloned."""
+        """Require the same completed read-only cache contract as image pull."""
         image_provider = self._required_provider("image")
-        await image_provider.validate_spec(spec._image_spec)
-        image_status = await image_provider.status(spec._image_spec)
-        if image_status == ProviderStatus.ABSENT:
-            await image_provider.present(spec._image_spec)
-        elif image_status == ProviderStatus.ERROR:
-            raise ChimeraError(
-                code="host_observation_failed",
-                message=f"Could not determine whether image '{spec.image}' exists.",
-                suggestion="Check machinectl and the Chimera server journal, then retry.",
-                status=503,
-            )
+        await image_provider.validate_spec(spec._effective_image)
+        await image_provider.present(spec._effective_image)
 
     async def _apply_desired_state_locked(self, record: ContainerRecord) -> None:
         """Apply the durable running/stopped target to the host system."""
@@ -1013,6 +1067,8 @@ class StateEngine:
             "desired_state": record.desired_state,
             "deleting": record.deleting,
             "image": record.spec.image,
+            "image_source": record.spec.image_source,
+            "image_artifact": record.spec.image_artifact,
             "profile": record.spec.profile,
             "bind_mounts": [model_dump(item) for item in record.spec.bind_mounts],
             "tmpfs_mounts": [model_dump(item) for item in record.spec.tmpfs_mounts],
@@ -1098,7 +1154,7 @@ class StateEngine:
         """Return the applied creation-time contract used for fingerprints."""
         return creation_render_payload(
             container_name=spec.name,
-            image=spec._image_spec,
+            image=spec._effective_image,
             cloud_init=spec.cloud_init,
             proxy=self._proxy(),
         )
@@ -1109,19 +1165,35 @@ class StateEngine:
             container_name=spec.name,
             profile=spec._profile_spec,
             proxy=self._proxy(),
-            extra_parameters=image_nspawn_parameters(spec._image_spec),
+            extra_parameters=image_nspawn_parameters(spec._effective_image),
             bind_mounts=spec.bind_mounts,
             tmpfs_mounts=spec.tmpfs_mounts,
             port_forwards=spec.port_forwards,
             resource_controls=spec.resource_controls,
         )
 
-    def _catalog_image_names(self) -> set[str]:
-        """Return catalog image names when the config manager exposes a mapping."""
-        images = getattr(self.config_manager, "images", {})
-        if isinstance(images, dict):
-            return set(images)
-        return set()
+    def _reject_unsupported_disk_provisioning(self, spec: ContainerSpec) -> None:
+        """Reject disk materialization that would require root-filesystem mutation."""
+        image = spec._effective_image
+        if image is None or image.artifact_kind != "disk":
+            return
+        if spec.cloud_init is not None:
+            raise ChimeraError(
+                code="unsupported_provisioning",
+                message="Disk artifacts do not support cloud-init provisioning.",
+                suggestion="Launch with --artifact rootfs, or omit --cloud-init.",
+                status=422,
+            )
+        if image.custom_files:
+            raise ChimeraError(
+                code="unsupported_provisioning",
+                message=(
+                    f"Disk artifact for '{image.canonical_image_id}' cannot apply "
+                    "product-policy custom_files."
+                ),
+                suggestion="Use --artifact rootfs, or remove custom_files from that product policy.",
+                status=422,
+            )
 
     def _proxy(self) -> ProxyConfig | None:
         """Return the active proxy snapshot used by rendering."""
@@ -1147,23 +1219,15 @@ class StateEngine:
         self, container_provider: Any, spec: ContainerSpec
     ) -> tuple[Any, str | None]:
         """Return materialization status and identity from the container provider."""
-        inspect = getattr(container_provider, "inspect_materialization", None)
-        if inspect is not None:
-            inspected = await inspect(spec)
-            status, identity = inspected
-            if identity is not None and not isinstance(identity, str):
-                return ProviderStatus.ERROR, None
-            return status, identity
-        status = await container_provider.status(spec)
-        identity = f"legacy:{spec.name}" if status == ProviderStatus.PRESENT else None
+        inspected = await container_provider.inspect_materialization(spec)
+        status, identity = inspected
+        if identity is not None and not isinstance(identity, str):
+            return ProviderStatus.ERROR, None
         return status, identity
 
     async def _host_artifacts_ok(self, container_provider: Any, spec: ContainerSpec) -> bool:
         """True when required .nspawn/override files still exist."""
-        method = getattr(container_provider, "host_config_artifacts_present", None)
-        if method is None:
-            return True
-        return bool(await method(spec))
+        return bool(await container_provider.host_config_artifacts_present(spec))
 
     async def _clear_error_locked(self, record: ContainerRecord) -> None:
         """Clear a prior operation error after a successful convergence."""

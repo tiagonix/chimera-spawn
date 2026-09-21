@@ -18,6 +18,7 @@ from ruamel.yaml import YAML
 from chimera.cli.client import ChimeraClient, ClientError
 from chimera.cli.commands import (
     print_doctor,
+    print_image_info,
     print_info,
     print_json,
     print_resources,
@@ -45,7 +46,7 @@ app = typer.Typer(
     name="chimeractl",
     help=(
         "Manage systemd-nspawn containers through the Chimera server.\n\n"
-        "Normal workflow: image list, image pull IMAGE, launch IMAGE NAME, "
+        "Normal workflow: image list --source SOURCE, image pull IMAGE, launch IMAGE NAME, "
         "info NAME, stop NAME, restart NAME, delete NAME.\n\n"
         "Use 'chimeractl doctor' when the server or host is unavailable."
     ),
@@ -53,10 +54,14 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 image_app = typer.Typer(help="Discover and pull container images.", no_args_is_help=True)
+image_source_app = typer.Typer(
+    help="Inspect administrator-configured image sources.", no_args_is_help=True
+)
 profile_app = typer.Typer(help="List reusable container profiles.", no_args_is_help=True)
 config_app = typer.Typer(help="Validate and import configuration.", no_args_is_help=True)
 server_app = typer.Typer(help="Inspect or reload the Chimera server.", no_args_is_help=True)
 app.add_typer(image_app, name="image")
+image_app.add_typer(image_source_app, name="source")
 app.add_typer(profile_app, name="profile")
 app.add_typer(config_app, name="config")
 app.add_typer(server_app, name="server")
@@ -213,6 +218,24 @@ def _common_tls_key() -> Any:
     return typer.Option(None, "--tls-key", help="PEM private key for the client certificate.")
 
 
+def _common_source() -> Any:
+    """Command-local configured SimpleStreams source name."""
+    return typer.Option(
+        None,
+        "--source",
+        help="Configured SimpleStreams source name.",
+    )
+
+
+def _common_artifact() -> Any:
+    """Command-local materialization kind for a resolved SimpleStreams product."""
+    return typer.Option(
+        "rootfs",
+        "--artifact",
+        help="Desired local materialization kind: rootfs (directory) or disk (raw image).",
+    )
+
+
 def _make_client(
     *,
     socket: str | None,
@@ -274,7 +297,7 @@ def _exit_with_error(error: ClientError, output_format: OutputFormat) -> None:
 
 @app.command("list")
 def list_command(
-    resource_type: str = typer.Argument("all", help="images, containers, profiles, or all"),
+    resource_type: str = typer.Argument("all", help="image_sources, containers, profiles, or all"),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
     socket: Optional[str] = _common_socket(),
     host: Optional[str] = _common_host(),
@@ -283,7 +306,7 @@ def list_command(
     tls_key: Optional[str] = _common_tls_key(),
     timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
-    """List images, profiles, and managed containers."""
+    """List image sources, profiles, and managed containers."""
     output_format = _format(output_format)
     result = _request(
         "list",
@@ -317,6 +340,8 @@ def _create_or_launch(
     cpu_quota: int | None,
     cpu_weight: int | None,
     io_weight: int | None,
+    image_source: str | None,
+    image_artifact: str,
     output_format: str,
     socket: str | None,
     host: str | None,
@@ -340,15 +365,19 @@ def _create_or_launch(
         cpu_weight=cpu_weight,
         io_weight=io_weight,
     )
+    payload: dict[str, Any] = {
+        "image": image,
+        "name": name,
+        "profile": profile,
+        "cloud_init": cloud_init,
+        **runtime,
+    }
+    if image_source is not None:
+        payload["image_source"] = image_source
+    payload["image_artifact"] = image_artifact
     result = _request(
         command,
-        {
-            "image": image,
-            "name": name,
-            "profile": profile,
-            "cloud_init": cloud_init,
-            **runtime,
-        },
+        payload,
         socket=socket,
         host=host,
         tls_ca=tls_ca,
@@ -360,12 +389,13 @@ def _create_or_launch(
     )
     action = "Launched" if command in {"launch", "spawn"} else "Created"
     state = result["desired_state"]
-    print_success(f"{action} {name} from {image} ({state}).", result, output_format)
+    shown = result.get("image", image)
+    print_success(f"{action} {name} from {shown} ({state}).", result, output_format)
 
 
 @app.command("create")
 def create_command(
-    image: str = typer.Argument(..., metavar="IMAGE", help="Catalog image to clone"),
+    image: str = typer.Argument(..., metavar="IMAGE", help="Source-published image reference"),
     name: str = typer.Argument(..., metavar="NAME", help="New container name"),
     profile: str = typer.Option("standard", "--profile", help="Catalog profile to apply"),
     cloud_init: Optional[str] = typer.Option(None, "--cloud-init", help="Cloud-init template"),
@@ -384,6 +414,8 @@ def create_command(
     cpu_quota: Optional[int] = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
     cpu_weight: Optional[int] = typer.Option(None, "--cpu-weight", min=1, max=10000),
     io_weight: Optional[int] = typer.Option(None, "--io-weight", min=1, max=10000),
+    source: Optional[str] = _common_source(),
+    artifact: str = _common_artifact(),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
     socket: Optional[str] = _common_socket(),
     host: Optional[str] = _common_host(),
@@ -410,6 +442,8 @@ def create_command(
         cpu_quota,
         cpu_weight,
         io_weight,
+        source,
+        artifact,
         output_format,
         socket,
         host,
@@ -422,7 +456,7 @@ def create_command(
 
 @app.command("launch")
 def launch_command(
-    image: str = typer.Argument(..., metavar="IMAGE", help="Catalog image to clone"),
+    image: str = typer.Argument(..., metavar="IMAGE", help="Source-published image reference"),
     name: str = typer.Argument(..., metavar="NAME", help="New container name"),
     profile: str = typer.Option("standard", "--profile", help="Catalog profile to apply"),
     cloud_init: Optional[str] = typer.Option(None, "--cloud-init", help="Cloud-init template"),
@@ -441,6 +475,8 @@ def launch_command(
     cpu_quota: Optional[int] = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
     cpu_weight: Optional[int] = typer.Option(None, "--cpu-weight", min=1, max=10000),
     io_weight: Optional[int] = typer.Option(None, "--io-weight", min=1, max=10000),
+    source: Optional[str] = _common_source(),
+    artifact: str = _common_artifact(),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
     socket: Optional[str] = _common_socket(),
     host: Optional[str] = _common_host(),
@@ -467,6 +503,8 @@ def launch_command(
         cpu_quota,
         cpu_weight,
         io_weight,
+        source,
+        artifact,
         output_format,
         socket,
         host,
@@ -479,7 +517,7 @@ def launch_command(
 
 @app.command("spawn")
 def spawn_command(
-    image: str = typer.Argument(..., metavar="IMAGE", help="Catalog image to clone"),
+    image: str = typer.Argument(..., metavar="IMAGE", help="Source-published image reference"),
     name: str = typer.Argument(..., metavar="NAME", help="New container name"),
     profile: str = typer.Option("standard", "--profile", help="Catalog profile to apply"),
     cloud_init: Optional[str] = typer.Option(None, "--cloud-init", help="Cloud-init template"),
@@ -498,6 +536,8 @@ def spawn_command(
     cpu_quota: Optional[int] = typer.Option(None, "--cpu-quota", min=1, help="CPU quota percent"),
     cpu_weight: Optional[int] = typer.Option(None, "--cpu-weight", min=1, max=10000),
     io_weight: Optional[int] = typer.Option(None, "--io-weight", min=1, max=10000),
+    source: Optional[str] = _common_source(),
+    artifact: str = _common_artifact(),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
     socket: Optional[str] = _common_socket(),
     host: Optional[str] = _common_host(),
@@ -525,6 +565,8 @@ def spawn_command(
         cpu_quota,
         cpu_weight,
         io_weight,
+        source,
+        artifact,
         output_format,
         socket,
         host,
@@ -939,6 +981,7 @@ def _stream(
 
 @image_app.command("list")
 def image_list_command(
+    source: Optional[str] = _common_source(),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
     socket: Optional[str] = _common_socket(),
     host: Optional[str] = _common_host(),
@@ -947,11 +990,47 @@ def image_list_command(
     tls_key: Optional[str] = _common_tls_key(),
     timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
-    """List catalog images before creating or launching a container."""
+    """List native-architecture products from one SimpleStreams source."""
+    output_format = _format(output_format)
+    if source is None:
+        _exit_with_error(
+            ClientError(
+                "invalid_argument",
+                "Listing images requires a configured SimpleStreams source.",
+                suggestion="Run 'chimeractl image source list' then 'chimeractl image list --source SOURCE'.",
+            ),
+            output_format,
+        )
+    result = _request(
+        "list",
+        {"type": "images", "image_source": source},
+        socket=socket,
+        host=host,
+        tls_ca=tls_ca,
+        tls_cert=tls_cert,
+        tls_key=tls_key,
+        timeout=timeout,
+        default_timeout=60,
+        output_format=output_format,
+    )
+    print_resources(result, output_format)
+
+
+@image_source_app.command("list")
+def image_source_list_command(
+    output_format: str = typer.Option("table", "--format", help="Output: table or json"),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
+) -> None:
+    """List administrator-configured image sources."""
     output_format = _format(output_format)
     result = _request(
         "list",
-        {"type": "images"},
+        {"type": "image_sources"},
         socket=socket,
         host=host,
         tls_ca=tls_ca,
@@ -964,9 +1043,44 @@ def image_list_command(
     print_resources(result, output_format)
 
 
+@image_app.command("info")
+def image_info_command(
+    name: str = typer.Argument(..., metavar="IMAGE", help="Source-published image reference"),
+    source: Optional[str] = _common_source(),
+    artifact: str = _common_artifact(),
+    output_format: str = typer.Option("table", "--format", help="Output: table or json"),
+    socket: Optional[str] = _common_socket(),
+    host: Optional[str] = _common_host(),
+    tls_ca: Optional[str] = _common_tls_ca(),
+    tls_cert: Optional[str] = _common_tls_cert(),
+    tls_key: Optional[str] = _common_tls_key(),
+    timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
+) -> None:
+    """Show SimpleStreams image identity, selected artifact, and local materialization."""
+    output_format = _format(output_format)
+    args: dict[str, Any] = {"name": name, "image_artifact": artifact}
+    if source is not None:
+        args["image_source"] = source
+    result = _request(
+        "image_info",
+        args,
+        socket=socket,
+        host=host,
+        tls_ca=tls_ca,
+        tls_cert=tls_cert,
+        tls_key=tls_key,
+        timeout=timeout,
+        default_timeout=60,
+        output_format=output_format,
+    )
+    print_image_info(result, output_format)
+
+
 @image_app.command("pull")
 def image_pull_command(
-    name: str = typer.Argument(..., metavar="IMAGE", help="Catalog image name"),
+    name: str = typer.Argument(..., metavar="IMAGE", help="Source-published image reference"),
+    source: Optional[str] = _common_source(),
+    artifact: str = _common_artifact(),
     output_format: str = typer.Option("table", "--format", help="Output: table or json"),
     socket: Optional[str] = _common_socket(),
     host: Optional[str] = _common_host(),
@@ -977,9 +1091,12 @@ def image_pull_command(
 ) -> None:
     """Pull an image now; launch pulls a missing image automatically."""
     output_format = _format(output_format)
+    args: dict[str, Any] = {"name": name, "image_artifact": artifact}
+    if source is not None:
+        args["image_source"] = source
     result = _request(
         "image_pull",
-        {"name": name},
+        args,
         socket=socket,
         host=host,
         tls_ca=tls_ca,
@@ -989,7 +1106,7 @@ def image_pull_command(
         default_timeout=600,
         output_format=output_format,
     )
-    print_success(f"Pulled image {name}.", result, output_format)
+    print_success(f"Pulled image {result.get('image', name)}.", result, output_format)
 
 
 @profile_app.command("list")
@@ -1143,7 +1260,7 @@ def server_reload_command(
     tls_key: Optional[str] = _common_tls_key(),
     timeout: Optional[float] = typer.Option(None, "--timeout", min=1.0),
 ) -> None:
-    """Reload the static image/profile/cloud-init catalog."""
+    """Reload image definitions, profiles, and cloud-init templates."""
     output_format = _format(output_format)
     result = _request(
         "reload",

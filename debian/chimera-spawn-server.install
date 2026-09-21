@@ -7,6 +7,7 @@ usr/lib/python3*/dist-packages/chimera/utils/observation.py
 usr/lib/python3*/dist-packages/chimera/utils/rendering.py
 usr/lib/python3*/dist-packages/chimera/utils/systemd.py
 usr/lib/python3*/dist-packages/chimera/utils/templates.py
+usr/lib/python3*/dist-packages/chimera/images
 configs/images usr/share/chimera-spawn/catalog
 configs/profiles usr/share/chimera-spawn/catalog
 configs/cloud-init usr/share/chimera-spawn/catalog

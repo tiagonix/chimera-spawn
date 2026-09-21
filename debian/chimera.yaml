@@ -1,6 +1,7 @@
 ---
-# Site configuration. Packaged image, profile, and cloud-init defaults live
-# under /usr/share/chimera-spawn/catalog and may be overridden here.
+# Site configuration. Packaged image definitions, profiles, and cloud-init
+# templates live under /usr/share/chimera-spawn/catalog and may be overridden
+# here.
 server:
   reconciliation_interval: 30
   log_level: INFO

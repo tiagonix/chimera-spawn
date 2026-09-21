@@ -3,7 +3,7 @@
 import pytest
 
 from chimera.errors import ChimeraError
-from chimera.utils.fs import write_contained_text
+from chimera.utils.fs import normalize_nspawn_machine_id, write_contained_text
 
 
 def test_write_contained_text_refuses_parent_escape(tmp_path):
@@ -25,3 +25,16 @@ def test_write_contained_text_refuses_intermediate_symlink(tmp_path):
     with pytest.raises(ChimeraError, match="intermediate symlink"):
         write_contained_text(root, "var/lib/cloud/seed/user-data", "secret")
     assert list(outside.iterdir()) == []
+
+
+def test_normalize_nspawn_machine_id_clears_uninitialized_newline(tmp_path):
+    """LXD images often store a single newline; systemd-nspawn needs an empty file."""
+    root = tmp_path / "root"
+    (root / "etc").mkdir(parents=True)
+    machine_id = root / "etc" / "machine-id"
+    machine_id.write_bytes(b"\n")
+    normalize_nspawn_machine_id(root)
+    assert machine_id.read_bytes() == b""
+    machine_id.write_text("0123456789abcdef0123456789abcdef")
+    normalize_nspawn_machine_id(root)
+    assert machine_id.read_text() == "0123456789abcdef0123456789abcdef"

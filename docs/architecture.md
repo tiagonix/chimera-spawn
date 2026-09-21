@@ -62,7 +62,8 @@ systemd-nspawn create, supervise, and enforce the resulting runtime.
 |                                                                                |
 |        catalogs / creation inputs                    runtime intent            |
 |  +------------------------------+       +-------------------------------+      |
-|  | ImageSpec                    |       | ProfileSpec                   |      |
+|  | ImageSourceSpec              |       | ProfileSpec                   |      |
+|  | local product policy         |       |                               |      |
 |  | cloud-init templates         |       | bind/tmpfs declarations       |      |
 |  | genuine custom_files         |       | published ports               |      |
 |  +--------------+---------------+       | resource controls             |      |
@@ -225,8 +226,9 @@ Server installation does not require `chimeractl`.
 
 ## State and ownership
 
-Image, profile, and cloud-init declarations are static catalogs. They are not
-container state. Packaged profiles are `standard` (the create/launch default),
+Image definitions, profiles, and cloud-init declarations are
+operator catalogs. They are not container state. Local product policy is part
+of each image source, not container state. Packaged profiles are `standard` (the create/launch default),
 `compat`, `privileged`, `offline`, and `private`. Optional YAML `description`
 fields are catalog metadata, not source-code constants. Site files under
 `/etc/chimera-spawn/profiles/` overlay the packaged catalog. `private` uses
@@ -241,8 +243,87 @@ marker. Its durable workload intent also stores `bind_mounts`, `tmpfs_mounts`,
 `io_weight`). Node-YAML `ensure`, `state`, and `autostart` fields are parsed
 only by `config import-nodes` and never control runtime lifecycle.
 
-`image pull` materializes catalog images as an explicit host action. Images do
-not acquire ContainerStore desired-state records.
+`image pull` materializes a resolved SimpleStreams product and artifact as an
+explicit host action. Images do not acquire ContainerStore desired-state
+records.
+
+### Image subsystem authority
+
+Chimera has one managed image subsystem: SimpleStreams. Named packaged sources
+are `ubuntu` (official Ubuntu cloud images, signed metadata) and `images`
+(Canonical-hosted multi-distribution LXD convenience/test imagery, TLS
+metadata).
+
+- `ImageSourceSpec` declares source location and trust (`url`,
+  `metadata_verify: signature|tls`, and a keyring path when signatures are
+  required) plus local policies keyed by canonical products from that source.
+  `products:` supplies `custom_files` and `nspawn_parameters`. A missing
+  product policy is empty, not a source failure. SimpleStreams metadata is
+  remote image discovery and artifact authority; it cannot supply or override
+  those local fields.
+- `artifact_kind` is `rootfs` (directory materialization, default) or `disk`
+  (systemd raw image). Concrete SimpleStreams `ftype` values such as
+  `root.tar.xz`, `squashfs`, `disk-kvm.img`, and `disk1.img` are storage
+  formats, not durable identity.
+- `EffectiveImage` is a transient composition of source, canonical product,
+  artifact kind, local cache name, and policy. It is not persisted.
+- `ProfileSpec` is reusable operator-selected runtime policy.
+
+An unqualified image request queries configured SimpleStreams sources. Exactly
+one match may be used. Multiple matches require `--source`. An unavailable
+candidate source does not silently establish uniqueness. `--source` searches
+only that configured source name. Clients cannot supply an arbitrary source or
+artifact URL.
+
+Remote create/launch canonicalizes the typed reference before persistence:
+`image_source` plus the canonical product plus `image_artifact`. That
+canonicalization resolves the request through the configured SimpleStreams
+source, including a source-published alias. Local systemd image names are
+derived from source, canonical product, and artifact kind, use the reserved
+`chimera-src-` prefix, and do not include aliases, serials, URLs, or ftypes.
+Generated cache objects match `chimera-src-` plus a 32-hex digest. Those cache
+images are Chimera-owned and are not reported as unmanaged host resources.
+After that resolution, a completed read-only cache for the same source,
+canonical product, and artifact kind is reused and is not downloaded again. A
+writable or unreadable cache is not accepted. Chimera does not refresh a
+completed cache when a newer serial appears. User-facing lookup uses
+source-published aliases or an exact product key; generic release/version
+metadata is not treated as an invented alias. Ordinary stop/start/info/delete
+of an already materialized container does not re-resolve the original alias.
+
+```text
+                              user image reference
+                                      |
+                          named SimpleStreams source
+                                      |
+                           source-published aliases
+                              / canonical product
+                                      |
+                           requested artifact kind
+                              rootfs or disk
+                                      |
+                            verified remote artifact
+                              SHA-256 / size / ftype
+                                      |
+                           local product policy
+                                      |
+                                EffectiveImage
+                                      |
+                    local systemd image (chimera-src-<digest>)
+                                      |
+                              container clone
+                                      |
+         rootfs: custom_files / cloud-init / nspawn_parameters / profile
+         disk:   nspawn_parameters / profile (no guest filesystem mutation)
+```
+
+Image sources are discovery authority for base-image import only. A new
+create, launch, or pull resolves the reference through the source before cache
+reuse. Newly published SimpleStreams serials are not container lifecycle
+authority. A completed read-only cache is reused after that resolution;
+Chimera does not contact the source to replace it. Existing containers and
+completed provisioning are never rewritten because a source published a newer
+build.
 
 Requested create/launch identity includes image, profile, named cloud-init
 template, mounts, port forwards, and resource controls. It is stored separately
@@ -261,8 +342,8 @@ or systemd override during ordinary lifecycle operations. A matching resource
 without a ContainerStore record is a conflict. `config import-nodes` is the
 single explicit, operator-requested node-YAML adoption route. Adoption of an
 existing materialization is `unknown`; a declaration whose host materialization
-is proven absent becomes `pending`. Catalog image names cannot be imported as
-containers.
+is proven absent becomes `pending`. Public container names cannot use the
+reserved `chimera-src-` image-cache prefix.
 
 ## Reconciliation and provisioning
 
@@ -330,6 +411,7 @@ Default FHS locations are:
 
 - configuration: `/etc/chimera-spawn`
 - packaged catalogs: `/usr/share/chimera-spawn/catalog`
+- site catalog overlays: `/etc/chimera-spawn/{images,profiles,cloud-init}`
 - durable state: `/var/lib/chimera-spawn`
 - runtime socket: `/run/chimera-spawn/server.sock`
 
