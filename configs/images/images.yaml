@@ -1,0 +1,8 @@
+---
+# Canonical/LXD multi-distribution convenience and test images.
+# These are not official artifacts from each included distribution.
+# Metadata authenticity is HTTPS transport only.
+
+images:
+  url: https://images.lxd.canonical.com/
+  metadata_verify: tls

@@ -21,7 +21,7 @@ from chimera.models.container import (
     ResourceControlSpec,
     TmpfsMountSpec,
 )
-from chimera.models.image import ImageSpec
+from chimera.images.identity import EffectiveImage
 from chimera.models.profile import ProfileSpec
 from chimera.pydantic_compat import model_dump
 from chimera.utils.templates import render_template
@@ -135,7 +135,7 @@ def ensure_nspawn_exec_assignment(content: str, assignment: str) -> str:
 
 
 def image_nspawn_parameters(image: Any | None) -> list[str]:
-    """Return extra kernel command-line tokens declared on a catalog image."""
+    """Return extra kernel command-line tokens declared by local product policy."""
     if image is None:
         return []
     values = getattr(image, "nspawn_parameters", None)
@@ -312,7 +312,7 @@ def render_systemd_override(
     return rendered + "[Service]\n" + "\n".join(lines) + "\n"
 
 
-def custom_file_contract(image: ImageSpec | None) -> list[dict[str, str | None]]:
+def custom_file_contract(image: EffectiveImage | None) -> list[dict[str, str | None]]:
     """Capture path, mode-equivalent ensure, and link target for creation identity."""
     if image is None:
         return []
@@ -331,7 +331,7 @@ def custom_file_contract(image: ImageSpec | None) -> list[dict[str, str | None]]
 def creation_render_payload(
     *,
     container_name: str,
-    image: ImageSpec | None,
+    image: EffectiveImage | None,
     cloud_init: CloudInitSpec | None,
     proxy: ProxyConfig | None,
 ) -> dict[str, Any]:
@@ -352,7 +352,7 @@ def creation_render_payload(
     # Proxy values that templates actually consume already appear in `files`.
     # Unused proxy settings are not part of the applied contract.
     return {
-        "image_type": None if image is None else image.type,
+        "artifact_kind": None if image is None else image.artifact_kind,
         "custom_files": custom_file_contract(image),
         "files": files,
     }

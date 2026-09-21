@@ -14,7 +14,8 @@ sudo usermod -aG chimera-admin "$USER"
 # Start a new login session after changing group membership.
 sudo systemctl enable --now chimera-server
 chimeractl doctor
-chimeractl image list
+chimeractl image source list
+chimeractl image list --source ubuntu
 chimeractl profile list
 chimeractl status
 ```
@@ -90,12 +91,19 @@ after an operator-requested stop. A normal lifecycle is:
 
 ```sh
 chimeractl launch IMAGE demo
+chimeractl launch resolute demo --source ubuntu
 chimeractl info demo
 chimeractl exec demo -- uname -a
 chimeractl stop demo
 chimeractl restart demo
 chimeractl delete demo
 ```
+
+`IMAGE` is a source-published SimpleStreams reference or exact canonical
+product. Without `--source`, configured remotes are discovered and exactly one
+match may be used. Multiple matches require `--source`. `--source` names a
+configured source and searches only that source. `--artifact rootfs|disk`
+selects the local materialization kind and defaults to `rootfs`.
 
 `start`, `stop`, and `restart` apply durable desired state. Retrying the same
 create or launch request resumes the identical intent after a lost response or
@@ -256,17 +264,58 @@ Use `--timeout SECONDS` for operations that need a different client timeout.
 Common remedies are `chimeractl doctor`, `chimeractl info NAME`, and the
 `chimera-server` system journal.
 
-## Raw images
+## Disk artifacts
 
-Raw images are supported for clone/start lifecycle, but this release does not
-mount or modify them. A raw image cannot use catalog `custom_files` and cannot
-be launched with `--cloud-init`; Chimera rejects those requests before durable
-state is created. Choose a root-filesystem tar image for those provisioning
-features.
+Disk artifacts clone/start as systemd raw images, but this release does not
+mount or modify them. A disk artifact cannot use product-policy
+`custom_files` and cannot be launched with `--cloud-init`; Chimera rejects
+those requests before durable state is created. Choose `--artifact rootfs` for
+those provisioning features. `nspawn_parameters` still apply to disk
+containers through host `.nspawn` rendering.
 
 Generated `.nspawn` files receive a host-appropriate `ResolvConf=` unless the
 profile already sets one. Image `nspawn_parameters` are the usual mechanism for
 image-specific systemd runtime masks such as `systemd.mask=`. `custom_files`
 remain for genuine guest-rootfs transformations.
-`chimeractl image list` wraps long source URLs instead of truncating them.
-JSON includes the complete source string unchanged.
+
+## Images
+
+`chimeractl image source list` shows configured SimpleStreams sources
+(`name`, `verify`, `url`). Packaged sources are `ubuntu` (signed metadata) and
+`images` (TLS metadata), loaded from `images/*.yaml` with site overlays under
+`/etc/chimera-spawn/images/`. There is no source create, edit, or delete command.
+
+`chimeractl image list --source SOURCE` is required. It queries that named
+SimpleStreams source and shows source-published references, release, variant
+when published, architecture, canonical product, available high-level artifact
+kinds, and whether local product policy is configured. It does not download
+artifacts. Omitting `--source` fails with an actionable error to run
+`image source list`. The `ubuntu` remote is Canonical's official Ubuntu
+cloud-image source. The `images` remote is Canonical-hosted convenience/test
+imagery and is not the official publication channel of each contained
+distribution.
+
+`chimeractl image info IMAGE [--source SOURCE] [--artifact rootfs|disk]`
+follows the same discovery rules as launch/pull. It reports current
+SimpleStreams metadata separately from local materialization and does not claim
+that today's serial is the provenance of an older local image.
+
+`chimeractl image pull IMAGE [--source SOURCE] [--artifact rootfs|disk]`
+materializes one resolved artifact. Chimera resolves a canonical product,
+selects a usable ftype for the requested kind, downloads it, verifies SHA-256
+and advertised size, and imports through native systemd `import-tar`,
+`import-fs`, or `import-raw`. If the derived local image already exists, pull
+leaves it unchanged. Launch and create share that same materialization path
+when the base image is absent. Clients cannot pass an arbitrary image URL.
+`--source` names a configured SimpleStreams source. `--artifact` defaults to
+`rootfs`.
+
+```sh
+chimeractl image list --source images
+chimeractl image info rockylinux/9 --source images
+chimeractl launch rockylinux/9 rocky-demo --source images
+```
+
+Use a source-published alias or exact canonical product from `image list`.
+Remote lookup does not invent aliases from generic release/version metadata.
+A derived `chimera-src-` local base is Chimera-owned cache storage.

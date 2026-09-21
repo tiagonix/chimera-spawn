@@ -1,27 +1,8 @@
-"""Fingerprint rendering includes proxy context and ignores unused catalog noise."""
+"""Fingerprint rendering includes composed nspawn parameters."""
 
-from chimera.models.container import CloudInitSpec, stable_fingerprint
-from chimera.models.image import ImageSpec
+from chimera.models.container import stable_fingerprint
 from chimera.models.profile import ProfileSpec
-from chimera.utils.rendering import creation_render_payload, host_config_render_payload
-
-
-def test_irrelevant_image_source_does_not_change_creation_fingerprint():
-    """Image download URL is not applied during rootfs initialization."""
-    cloud_init = CloudInitSpec(user_data="#cloud-config\n")
-    left = creation_render_payload(
-        container_name="demo",
-        image=ImageSpec(name="ubuntu", type="tar", source="https://example.invalid/a.tar"),
-        cloud_init=cloud_init,
-        proxy=None,
-    )
-    right = creation_render_payload(
-        container_name="demo",
-        image=ImageSpec(name="ubuntu", type="tar", source="https://example.invalid/b.tar"),
-        cloud_init=cloud_init,
-        proxy=None,
-    )
-    assert stable_fingerprint(left) == stable_fingerprint(right)
+from chimera.utils.rendering import host_config_render_payload
 
 
 def test_host_config_fingerprint_includes_composed_nspawn_parameters():

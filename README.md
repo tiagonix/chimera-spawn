@@ -220,11 +220,12 @@ Installed all-in-one host (default Unix socket, `chimeractl` from the package):
 chimeractl doctor
 chimeractl status
 
-# List catalog image definitions (not proof that a rootfs is downloaded)
-chimeractl image list
+# List products from a named SimpleStreams source
+chimeractl image source list
+chimeractl image list --source ubuntu
 
-# Create and start a container (uses the standard profile)
-chimeractl launch ubuntu-24.04-cloud-tar demo
+# Create and start a container (uses the standard profile and rootfs)
+chimeractl launch resolute demo --source ubuntu
 
 # Inspect desired vs observed state
 chimeractl info demo
@@ -289,7 +290,7 @@ resource limits:
 
 ```bash
 mkdir -p "$PWD/.chimera-output"
-chimeractl launch ubuntu-26.04-cloud-tar agent-build \
+chimeractl launch resolute agent-build --source ubuntu \
     --profile private \
     --bind-ro "$PWD:/workspace/source:rootidmap" \
     --bind "$PWD/.chimera-output:/workspace/output:rootidmap" \
@@ -327,7 +328,7 @@ service with `chimeractl logs NAME --supervisor`.
 Configuration files are stored in the `configs/` directory:
 
 - `chimera.yaml` - Main server configuration
-- `images/*.yaml` - Image definitions
+- `images/*.yaml` - Named SimpleStreams sources and local product policy
 - `profiles/*.yaml` - Container profiles
 - `cloud-init/*.yaml` - Cloud-init templates
 - `nodes/*.yaml` - Legacy migration input only, not runtime container authority
@@ -337,10 +338,9 @@ Configuration files are stored in the `configs/` directory:
 ```
 configs/
 ├── chimera.yaml         # Main configuration
-├── images/              # Image definitions
+├── images/              # Named SimpleStreams sources and local product policy
 │   ├── ubuntu.yaml
-│   ├── debian.yaml
-│   └── rocky.yaml
+│   └── images.yaml
 ├── profiles/            # Container profiles
 │   ├── standard.yaml
 │   ├── compat.yaml
@@ -382,8 +382,73 @@ regular file, otherwise the host's ordinary resolver file. A profile that
 already sets `ResolvConf=` in `[Exec]` keeps that value. Image
 `nspawn_parameters` are the usual mechanism for image-specific systemd runtime
 masks such as `systemd.mask=`. `custom_files` remain for genuine guest-rootfs
-transformations. `chimeractl image list` wraps long source URLs instead of
-truncating them.
+transformations. `chimeractl image list --source SOURCE` wraps long product
+keys and published references instead of truncating them.
+
+Chimera acquires images from named SimpleStreams sources. Packaged `ubuntu`
+uses `https://cloud-images.ubuntu.com/releases/` with detached GPG metadata
+signatures against `/usr/share/keyrings/ubuntu-cloudimage-keyring.gpg`.
+Packaged `images` uses `https://images.lxd.canonical.com/` with TLS metadata
+authenticity only; it hosts multi-distribution convenience and test images
+built for LXD and is not the official publication channel of each contained
+distribution. `--source` selects a configured source name.
+
+SimpleStreams products are discovered from source-published aliases and
+canonical product keys. Chimera does not add a local alias subsystem. An
+unqualified image request queries configured sources; exactly one match may be
+used, multiple matches are ambiguous, and an unavailable candidate source does
+not silently pick a winner. Explicit `--source` searches only that source.
+`--artifact rootfs|disk` selects the local materialization kind and defaults
+to directory rootfs.
+
+Durable container intent stores `image_source`, the canonical product, and
+`image_artifact`, not the typed alias or current serial. Local image caches
+are named from source plus canonical product plus artifact kind and are not
+refreshed when a newer serial appears. Local product policy is keyed by the
+exact canonical product on that source. Cloud-init and `custom_files` remain
+rootfs creation features. Disk artifacts reject those mutations at
+create/launch. Clients cannot supply an arbitrary fetch URL.
+
+```yaml
+# configs/images/ubuntu.yaml
+ubuntu:
+  url: https://cloud-images.ubuntu.com/releases/
+  metadata_verify: signature
+  keyring: /usr/share/keyrings/ubuntu-cloudimage-keyring.gpg
+  products:
+    "com.ubuntu.cloud:server:24.04:amd64":
+      nspawn_parameters:
+        - fstab=no
+        - systemd.mask=systemd-resolved.service
+        - systemd.mask=systemd-networkd-wait-online.service
+        - systemd.mask=systemd-remount-fs.service
+        - systemd.mask=tpm-udev.service
+        - systemd.mask=iscsid.socket
+        - systemd.mask=ssh.socket
+```
+
+```bash
+chimeractl image source list
+chimeractl image list --source ubuntu
+chimeractl image list --source images
+chimeractl image info resolute --source ubuntu
+chimeractl image pull resolute --source ubuntu
+chimeractl image info rockylinux/9 --source images
+chimeractl launch resolute demo --source ubuntu
+chimeractl launch resolute disk-demo --source ubuntu --artifact disk
+chimeractl launch rockylinux/9 rocky-demo --source images
+```
+
+`image list` requires `--source`. `image list --source images` lists
+native-architecture products from the Canonical/LXD SimpleStreams catalog using
+each product's published aliases; it does not invent Chimera aliases or
+download artifacts. Remote lookup uses those published aliases or an exact
+canonical product key. Local caches use a reserved `chimera-src-` name
+derived from source, canonical product, and artifact kind and are
+Chimera-owned storage, not unmanaged host images. An already materialized local
+image is reused; Chimera does not replace it when SimpleStreams publishes a
+newer serial. Not every source product is guaranteed to boot under
+systemd-nspawn.
 
 ### Example Container Configuration
 
@@ -396,7 +461,9 @@ containers:
   ubuntu2404-dev:
     ensure: present
     state: running
-    image: ubuntu-24.04-cloud-tar
+    image: com.ubuntu.cloud:server:24.04:amd64
+    image_source: ubuntu
+    image_artifact: rootfs
     profile: standard
     cloud_init:
       template: ubuntu_base
@@ -413,9 +480,9 @@ chimeractl config import-nodes configs/nodes/dev-node1.yaml
 
 #### Add a New Container
 
-1. Launch from a catalog image (this persists CLI-owned intent):
+1. Launch from a SimpleStreams product (this persists CLI-owned intent):
 ```bash
-chimeractl launch ubuntu-24.04-cloud-tar my-new-container
+chimeractl launch resolute my-new-container --source ubuntu
 ```
 
 2. Inspect the result:
@@ -427,21 +494,22 @@ To migrate an existing node-YAML declaration instead, import it as shown above.
 
 #### Pull a New Image
 
-1. Check catalog image definitions:
+1. Inspect configured image sources, then list one source:
 ```bash
-chimeractl image list
+chimeractl image source list
+chimeractl image list --source ubuntu
 ```
 
 2. Pull an image:
 ```bash
-chimeractl image pull ubuntu-24.04-cloud-tar
+chimeractl image pull resolute --source ubuntu
 ```
 
 #### Use with Proxy
 
 Templated `.nspawn` profile content and cloud-init `user-data` can consume
-Chimera proxy settings. Image downloads go through `machinectl pull-*` and are
-not driven by `config.proxy`.
+Chimera proxy settings. SimpleStreams downloads use the server HTTPS client;
+that path is not driven by `config.proxy`.
 
 Edit `configs/chimera.yaml`:
 ```yaml
@@ -467,8 +535,10 @@ chimeractl shell NAME          # Interactive shell in container
 chimeractl logs NAME           # Stream guest journal records
 
 # Image Management
-chimeractl image pull NAME     # Pull image
-chimeractl image list          # List catalog image definitions
+chimeractl image source list              # List configured SimpleStreams sources
+chimeractl image list --source ubuntu     # List Ubuntu SimpleStreams products
+chimeractl image info IMAGE [--source S] [--artifact rootfs|disk]
+chimeractl image pull IMAGE [--source S] [--artifact rootfs|disk]
 
 # System Operations
 chimeractl doctor              # Local or remote diagnostics
@@ -518,9 +588,9 @@ with Linux `SO_PEERCRED`. Remote access uses HTTPS and WSS with mutual TLS.
               ContainerStore            Providers
 ```
 
-Images, profiles, and cloud-init remain static catalogs. `image pull` is an
-explicit host action. ContainerStore holds managed containers only. Ordinary
-lifecycle operations never adopt unmanaged host resources;
+Image definitions, profiles, and cloud-init remain operator catalogs.
+`image pull` is an explicit host action. ContainerStore holds managed containers
+only. Ordinary lifecycle operations never adopt unmanaged host resources;
 `config import-nodes` is the explicit legacy-adoption path.
 
 Deeper design, including creation-time provisioning and host configuration, is
@@ -539,8 +609,8 @@ Run `chimeractl doctor` first. It works without a functioning server.
 - Do not delete an arbitrary file at the socket path
 
 ### Container Won't Start
-- Confirm the catalog defines the image: `chimeractl image list`
-- Pull the image if it has not been downloaded: `chimeractl image pull NAME`
+- Confirm the source publishes the product: `chimeractl image list --source ubuntu`
+- Pull the image if it has not been downloaded: `chimeractl image pull NAME --source ubuntu`
 - Check systemd logs: `sudo journalctl -u systemd-nspawn@container-name`
 - Verify profile exists: `chimeractl profile list`
 

@@ -8,20 +8,20 @@ from rich.console import Console
 
 from chimera.cli.commands import print_resources
 
-UBUNTU_26_SOURCE = (
-    "https://cloud-images.ubuntu.com/releases/26.04/release/"
-    "ubuntu-26.04-server-cloudimg-amd64-root.tar.xz"
-)
+PRODUCT = "com.ubuntu.cloud:server:26.04:amd64"
 
 IMAGE_RESPONSE = {
     "images": {
-        "ubuntu-26.04-cloud-tar": {
-            "name": "ubuntu-26.04-cloud-tar",
-            "type": "tar",
-            "verify": "signature",
-            "source": UBUNTU_26_SOURCE,
+        PRODUCT: {
+            "references": ["26.04", "resolute"],
+            "release": "resolute",
+            "variant": "default",
+            "architecture": "amd64",
+            "product": PRODUCT,
+            "artifacts": ["rootfs", "disk"],
+            "policy": "packaged",
         }
-    }
+    },
 }
 
 
@@ -40,9 +40,9 @@ def _render(width: int) -> str:
     return buffer.getvalue()
 
 
-def test_wide_image_table_shows_complete_source_url():
+def test_wide_image_table_shows_complete_canonical_product():
     output = _render(240)
-    assert UBUNTU_26_SOURCE in output
-    assert "ubuntu-26.04-server-cloudimg-amd64-root.tar.xz" in output
+    assert PRODUCT in output
+    assert "rootfs,disk" in output
     assert "…" not in output
     assert "..." not in output

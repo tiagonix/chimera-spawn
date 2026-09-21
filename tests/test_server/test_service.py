@@ -17,7 +17,7 @@ def service(tmp_path):
     engine.get_all_container_statuses = AsyncMock(return_value={})
     engine.get_container_status = AsyncMock()
     manager = Mock()
-    manager.images = {}
+    manager.image_sources = {}
     manager.profiles = {}
     return CommandService(
         engine,
@@ -68,3 +68,44 @@ async def test_tls_identity_cannot_spoof_unix_uid(service):
     with pytest.raises(ChimeraError) as error:
         await service.execute("start", {"name": "demo"}, peer_unverified)
     assert error.value.code == "permission_denied"
+
+
+@pytest.mark.asyncio
+async def test_image_list_requires_source(service):
+    """Listing images without a configured source is an invalid argument."""
+    service.state_engine.list_source_images = AsyncMock()
+    with pytest.raises(ChimeraError, match="requires a configured SimpleStreams source"):
+        await service.execute("list", {"type": "images"}, PeerCredentials(uid=1000))
+    service.state_engine.list_source_images.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_image_list_with_source_queries_that_source(service):
+    """image list --source queries only that SimpleStreams source."""
+    service.state_engine.list_source_images = AsyncMock(
+        return_value=[{"product": "demo:product:amd64", "artifacts": ["rootfs"]}]
+    )
+    result = await service.execute(
+        "list",
+        {"type": "images", "image_source": "ubuntu"},
+        PeerCredentials(uid=1000),
+    )
+    assert result["image_source"] == "ubuntu"
+    service.state_engine.list_source_images.assert_awaited_once_with("ubuntu")
+
+
+@pytest.mark.asyncio
+async def test_image_info_is_a_read_command(service):
+    """image_info uses the same resolution path and does not require root."""
+    service.state_engine.describe_image = AsyncMock(
+        return_value={"requested": "noble", "source": "ubuntu"}
+    )
+    result = await service.execute(
+        "image_info",
+        {"name": "noble", "image_source": "ubuntu"},
+        PeerCredentials(uid=1000, gids=(1000,)),
+    )
+    assert result["source"] == "ubuntu"
+    service.state_engine.describe_image.assert_awaited_once_with(
+        "noble", image_source="ubuntu", image_artifact="rootfs"
+    )

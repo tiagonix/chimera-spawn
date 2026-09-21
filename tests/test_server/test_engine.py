@@ -46,6 +46,7 @@ class TestStateEngineEnrichment:
         container_spec = ContainerSpec(
             name="test-container",
             image="test-image",
+            image_source="ubuntu",
             cloud_init=CloudInitSpec(
                 template="base_template",
                 meta_data={"override_key": "override_value", "nested": {"b": 2}},

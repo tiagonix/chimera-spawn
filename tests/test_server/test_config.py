@@ -1,23 +1,48 @@
-"""
-Tests for server configuration management.
-
-Author: Thiago Camargo <thiagocmc@proton.me>
-License: AGPL-3.0-only
-"""
+"""Tests for server configuration management."""
 
 import pytest
 
+from chimera.errors import ChimeraError
 from chimera.server.config import ConfigManager
+
+PACKAGED_UBUNTU = """\
+ubuntu:
+  url: https://images.example/default/
+  metadata_verify: signature
+  keyring: /usr/share/keyrings/ubuntu-cloudimage-keyring.gpg
+  products:
+    "com.example:product-a:amd64":
+      nspawn_parameters:
+        - fstab=no
+    "com.example:product-b:amd64":
+      custom_files:
+        - path: etc/example
+          ensure: absent
+      nspawn_parameters:
+        - systemd.mask=ssh.socket
+"""
+
+SITE_UBUNTU = """\
+ubuntu:
+  url: https://images.example/local/
+  products:
+    "com.example:product-b:amd64":
+      nspawn_parameters:
+        - systemd.mask=ssh.service
+"""
+
+SITE_COMPANY = """\
+company:
+  url: https://images.example/company/
+  metadata_verify: tls
+"""
 
 
 @pytest.fixture
 def config_dir(tmp_path):
     """Create a temporary config directory structure."""
-    (tmp_path / "images").mkdir()
     (tmp_path / "profiles").mkdir()
     (tmp_path / "cloud-init").mkdir()
-
-    # Create main config
     (tmp_path / "chimera.yaml").write_text("""
 systemd:
   machines_dir: /tmp/machines
@@ -29,21 +54,62 @@ systemd:
 class TestConfigManager:
     """Test ConfigManager async operations."""
 
-    async def test_local_catalog_overrides_packaged_default(self, config_dir, tmp_path):
-        """The site catalog must override a same-name packaged definition."""
-        packaged = tmp_path / "catalog"
-        (packaged / "images").mkdir(parents=True)
-        (packaged / "images" / "base.yaml").write_text(
-            "ubuntu:\n  type: tar\n  source: https://example.invalid/default.tar\n"
-        )
-        (config_dir / "images" / "local.yaml").write_text(
-            "ubuntu:\n  type: tar\n  source: https://example.invalid/local.tar\n"
-        )
+    async def test_site_image_source_overlays_packaged_source(self, config_dir, tmp_path):
+        """Site scalars and exact product policies overlay one packaged source."""
+        packaged = tmp_path / "catalog" / "images"
+        packaged.mkdir(parents=True)
+        (packaged / "ubuntu.yaml").write_text(PACKAGED_UBUNTU)
+        site = config_dir / "images"
+        site.mkdir()
+        (site / "ubuntu.yaml").write_text(SITE_UBUNTU)
+        (site / "company.yaml").write_text(SITE_COMPANY)
 
-        manager = ConfigManager(config_dir, packaged)
+        manager = ConfigManager(config_dir, tmp_path / "catalog")
         await manager.load()
 
-        assert manager.get_image_spec("ubuntu").source.endswith("/local.tar")
+        ubuntu = manager.get_image_source_spec("ubuntu")
+        assert ubuntu is not None
+        assert ubuntu.url.endswith("/local/")
+        assert ubuntu.metadata_verify == "signature"
+        assert ubuntu.keyring == "/usr/share/keyrings/ubuntu-cloudimage-keyring.gpg"
+        assert manager.get_product_policy(
+            "ubuntu", "com.example:product-a:amd64"
+        ).nspawn_parameters == ["fstab=no"]
+        replaced = manager.get_product_policy("ubuntu", "com.example:product-b:amd64")
+        assert replaced.nspawn_parameters == ["systemd.mask=ssh.service"]
+        assert replaced.custom_files == []
+        assert (
+            manager.get_product_policy(
+                "ubuntu", "com.example:not-published:amd64"
+            ).nspawn_parameters
+            == []
+        )
+        company = manager.get_image_source_spec("company")
+        assert company is not None
+        assert company.metadata_verify == "tls"
+        assert company.products == {}
+        listed = manager.list_image_sources()
+        assert listed["ubuntu"]["url"].endswith("/local/")
+        assert listed["ubuntu"]["metadata_verify"] == "signature"
+        assert "products" not in listed["ubuntu"]
+
+    async def test_inconsistent_site_trust_rejects_candidate(self, config_dir, tmp_path):
+        """A site trust change that leaves an inherited keyring rejects the candidate."""
+        packaged = tmp_path / "catalog" / "images"
+        packaged.mkdir(parents=True)
+        (packaged / "ubuntu.yaml").write_text(PACKAGED_UBUNTU)
+        manager = ConfigManager(config_dir, tmp_path / "catalog")
+        await manager.load()
+        active = manager.snapshot
+        site = config_dir / "images"
+        site.mkdir()
+        (site / "ubuntu.yaml").write_text("ubuntu:\n  metadata_verify: tls\n")
+
+        with pytest.raises(ChimeraError) as caught:
+            await manager.build_snapshot()
+
+        assert caught.value.code == "invalid_configuration"
+        assert manager.snapshot is active
 
     @pytest.mark.parametrize(
         "changed_config",

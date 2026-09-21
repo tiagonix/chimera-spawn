@@ -51,13 +51,46 @@ is omitted.
 .SH COMMANDS
 .TP
 .B create IMAGE NAME
-Create a stopped container.
+Create a stopped container. IMAGE is a source-published SimpleStreams
+reference or canonical product. Optional
+.B \-\-source
+selects a configured SimpleStreams source name. Optional
+.B \-\-artifact rootfs|disk
+selects the local materialization kind. Default
+.BR rootfs .
 .TP
 .B launch IMAGE NAME
-Create and start a container.
+Create and start a container. IMAGE is a source-published SimpleStreams
+reference or canonical product. Optional
+.B \-\-source
+selects a configured SimpleStreams source name. Optional
+.B \-\-artifact rootfs|disk
+selects the local materialization kind. Default
+.BR rootfs .
 .TP
 .B spawn IMAGE NAME
 Deprecated alias for launch. It accepts the same workload options.
+.TP
+.B image list \-\-source SOURCE
+List native-architecture products from one configured SimpleStreams source.
+.B \-\-source
+is required.
+.TP
+.B image info IMAGE
+Show SimpleStreams identity, selected artifact, and local materialization.
+Optional
+.B \-\-source
+selects a configured source name. Optional
+.B \-\-artifact rootfs|disk
+selects the materialization kind. Default
+.BR rootfs .
+.TP
+.B image source list
+List configured SimpleStreams sources. Packaged remotes are
+.B ubuntu
+(signed metadata) and
+.B images
+(TLS metadata).
 .TP
 .B logs NAME
 Stream the managed container's guest journal from the server host. Use
@@ -90,6 +123,13 @@ Output format. JSON is machine-readable on stdout.
 .B \-\-timeout \fISECONDS\fR
 HTTP setup and WebSocket handshake timeout. It does not abort a started guest command.
 .SS Create, launch, and spawn workload options
+.TP
+.B \-\-source \fINAME\fR
+Configured SimpleStreams source name.
+.TP
+.B \-\-artifact \fIrootfs|disk\fR
+Desired local materialization kind. Default
+.BR rootfs .
 .TP
 .B \-\-bind \fISOURCE:DEST[:OPTIONS]\fR
 Add a writable native nspawn bind mount. Repeatable.

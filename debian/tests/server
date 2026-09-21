@@ -10,12 +10,24 @@ chimera-server --help >/dev/null
 python3 - <<'PY'
 import chimera.server
 import chimera.providers
+import chimera.images
 import chimera.utils.fs
 import chimera.utils.systemd
 from pathlib import Path
 from ruamel.yaml import YAML
 
 print("server-imports-ok")
+catalog = Path("/usr/share/chimera-spawn/catalog")
+ubuntu = YAML(typ="safe").load((catalog / "images" / "ubuntu.yaml").read_text(encoding="utf-8"))
+images = YAML(typ="safe").load((catalog / "images" / "images.yaml").read_text(encoding="utf-8"))
+assert ubuntu["ubuntu"]["metadata_verify"] == "signature"
+assert ubuntu["ubuntu"]["url"] == "https://cloud-images.ubuntu.com/releases/"
+assert "com.ubuntu.cloud:server:24.04:amd64" in ubuntu["ubuntu"]["products"]
+assert images["images"]["metadata_verify"] == "tls"
+assert images["images"]["url"] == "https://images.lxd.canonical.com/"
+assert (catalog / "profiles" / "standard.yaml").is_file()
+assert (catalog / "cloud-init" / "ubuntu.yaml").is_file()
+print("image-catalogs-ok")
 data = YAML(typ="safe").load(Path("/etc/chimera-spawn/chimera.yaml").read_text(encoding="utf-8"))
 assert data["server"].get("host") is None
 print("remote-disabled-by-default")

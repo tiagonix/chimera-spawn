@@ -17,6 +17,7 @@ async def test_prepare_writes_seed_files_inside_the_container_root(tmp_path):
     spec = ContainerSpec(
         name="demo",
         image="ubuntu",
+        image_source="ubuntu",
         cloud_init=CloudInitSpec(user_data="#cloud-config\npackages: []\n"),
     )
     await provider.prepare(spec)
@@ -37,6 +38,7 @@ async def test_prepare_refuses_symlink_root_and_intermediate_links(tmp_path):
     spec = ContainerSpec(
         name="demo",
         image="ubuntu",
+        image_source="ubuntu",
         cloud_init=CloudInitSpec(user_data="#cloud-config\n"),
     )
     with pytest.raises(ChimeraError, match="not a writable root filesystem"):
@@ -49,6 +51,7 @@ async def test_prepare_refuses_symlink_root_and_intermediate_links(tmp_path):
     spec = ContainerSpec(
         name="guest",
         image="ubuntu",
+        image_source="ubuntu",
         cloud_init=CloudInitSpec(user_data="#cloud-config\n"),
     )
     with pytest.raises(ChimeraError, match="intermediate symlink"):

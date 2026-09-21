@@ -43,6 +43,11 @@ def print_success(message: str, data: dict[str, Any], output_format: str) -> Non
         console.print(message)
 
 
+def _cell(value: Any) -> str:
+    """Render an optional catalog field as a table cell."""
+    return "" if value is None else str(value)
+
+
 def print_resources(
     response: dict[str, Any],
     output_format: str,
@@ -56,12 +61,37 @@ def print_resources(
         return
     if "images" in response:
         table = Table(title="Images")
-        table.add_column("Name", overflow="fold")
-        table.add_column("Type", overflow="fold")
-        table.add_column("Verify", overflow="fold")
-        table.add_column("Source", overflow="fold")
+        table.add_column("References", overflow="fold")
+        table.add_column("Release", overflow="fold")
+        table.add_column("Variant", overflow="fold")
+        table.add_column("Arch", overflow="fold")
+        table.add_column("Product", overflow="fold")
+        table.add_column("Artifacts", overflow="fold")
+        table.add_column("Policy", overflow="fold")
         for info in response["images"].values():
-            table.add_row(info["name"], info["type"], info["verify"], info["source"])
+            references = info.get("references") or []
+            artifacts = info.get("artifacts") or []
+            table.add_row(
+                ", ".join(str(item) for item in references),
+                _cell(info.get("release") or info.get("version")),
+                _cell(info.get("variant")),
+                _cell(info.get("architecture")),
+                _cell(info.get("product")),
+                ",".join(str(item) for item in artifacts),
+                _cell(info.get("policy")),
+            )
+        printer.print(table)
+    if "image_sources" in response:
+        table = Table(title="Image sources")
+        table.add_column("Name", overflow="fold")
+        table.add_column("Verify", overflow="fold")
+        table.add_column("URL", overflow="fold")
+        for info in response["image_sources"].values():
+            table.add_row(
+                info["name"],
+                _cell(info.get("metadata_verify")),
+                _cell(info.get("url")),
+            )
         printer.print(table)
     if "containers" in response:
         table = Table(title="Containers")
@@ -95,6 +125,10 @@ def print_info(response: dict[str, Any], name: str, output_format: str) -> None:
     console.print(f"Observed state: {info['observed_state']}")
     console.print(f"Desired state: {info['desired_state']}")
     console.print(f"Image: {info['image']}")
+    if info.get("image_source"):
+        console.print(f"Image source: {info['image_source']}")
+    if info.get("image_artifact"):
+        console.print(f"Image artifact: {info['image_artifact']}")
     console.print(f"Profile: {info['profile']}")
     for mount in info.get("bind_mounts") or []:
         mode = "read-only" if mount.get("read_only") else "writable"
@@ -127,6 +161,46 @@ def print_info(response: dict[str, Any], name: str, output_format: str) -> None:
         console.print(f"Last error: {info['last_error']}")
     if info.get("next_action"):
         console.print(f"Next: {info['next_action']}")
+
+
+def print_image_info(response: dict[str, Any], output_format: str) -> None:
+    """Render SimpleStreams image information, keeping local state distinct."""
+    if output_format == "json":
+        print_json(response)
+        return
+    console.print(f"Requested: {response.get('requested')}")
+    console.print(f"Source: {response.get('source')}")
+    console.print(f"Canonical: {response.get('canonical_image_id')}")
+    aliases = response.get("aliases") or []
+    console.print(f"Published aliases: {', '.join(str(item) for item in aliases)}")
+    console.print(f"Release: {response.get('release')}")
+    if response.get("variant"):
+        console.print(f"Variant: {response.get('variant')}")
+    console.print(f"Architecture: {response.get('architecture')}")
+    console.print(f"Metadata verify: {response.get('metadata_verify')}")
+    if response.get("keyring"):
+        console.print(f"Keyring: {response.get('keyring')}")
+    artifacts = response.get("artifacts") or []
+    if artifacts:
+        console.print(f"Available artifacts: {','.join(str(item) for item in artifacts)}")
+    console.print(f"Requested artifact: {response.get('artifact_kind')}")
+    remote = response.get("remote") or {}
+    console.print(f"Selected ftype: {remote.get('ftype')}")
+    console.print(f"Current serial: {remote.get('serial')}")
+    console.print(f"Current URL: {remote.get('url')}")
+    console.print(f"Advertised SHA-256: {remote.get('sha256')}")
+    console.print(f"Advertised size: {remote.get('size')}")
+    parameters = response.get("nspawn_parameters") or []
+    custom_files = response.get("custom_files") or []
+    console.print("Local product policy:")
+    if parameters:
+        console.print("nspawn_parameters: " + " ".join(str(item) for item in parameters))
+    console.print(f"custom_files: {len(custom_files)}")
+    local = response.get("local") or {}
+    console.print(f"Local image: {local.get('name')}")
+    console.print(f"Local status: {local.get('status')}")
+    if local.get("read_only") is not None:
+        console.print(f"Local read-only: {local.get('read_only')}")
 
 
 def print_doctor(response: dict[str, Any], output_format: str) -> None:
@@ -205,6 +279,8 @@ def print_doctor(response: dict[str, Any], output_format: str) -> None:
                 console.print(
                     "unmanaged systemd overrides: " + ", ".join(unmanaged["systemd_overrides"])
                 )
+            if unmanaged.get("image_caches"):
+                console.print("image caches: " + ", ".join(unmanaged["image_caches"]))
             if server_checks.get("machine_observation_error"):
                 console.print(
                     "host observation: " + str(server_checks["machine_observation_error"])

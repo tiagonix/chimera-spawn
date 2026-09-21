@@ -1,12 +1,19 @@
 """Behavioral contracts for durable lifecycle operations."""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from chimera.errors import ChimeraError
+from chimera.images.identity import effective_from_source
+from chimera.images.reference import ImageResolution
 from chimera.models.config import ChimeraConfig
-from chimera.models.image import CustomFileSpec, ImageSpec
+from chimera.models.image import (
+    CustomFileSpec,
+    ImageProductPolicy,
+    ImageSourceSpec,
+    empty_product_policy,
+)
 from chimera.models.profile import ProfileSpec
 from chimera.providers.base import ProviderStatus
 from chimera.server.engine import StateEngine
@@ -17,12 +24,18 @@ from tests.support.stateful_provider import StatefulContainerProvider
 @pytest.fixture
 def lifecycle_engine(tmp_path):
     """Build an engine whose provider state actually changes."""
-    image = ImageSpec(name="ubuntu", type="tar", source="https://example.invalid/ubuntu.tar")
+    source = ImageSourceSpec(
+        name="ubuntu",
+        url="https://images.example/releases/",
+        metadata_verify="tls",
+    )
+    product = "com.ubuntu.cloud:server:24.04:amd64"
     manager = Mock()
     manager.config = ChimeraConfig()
-    manager.images = {"ubuntu": image}
+    manager.image_sources = {"ubuntu": source}
     manager.cloud_init_templates = {}
-    manager.get_image_spec.side_effect = lambda name: image if name == "ubuntu" else None
+    manager.get_image_source_spec.side_effect = lambda name: manager.image_sources.get(name)
+    manager.get_product_policy.side_effect = lambda source_name, product_key: empty_product_policy()
     manager.get_profile_spec.side_effect = lambda name: ProfileSpec(
         name=name, nspawn_config_content="[Exec]", systemd_override_content="[Service]"
     )
@@ -40,7 +53,30 @@ def lifecycle_engine(tmp_path):
     store = ContainerStore(tmp_path / "state.json")
     store.load()
     engine = StateEngine(manager, registry, store)
-    return engine, store, image_provider, container_provider
+
+    async def fake_resolve(
+        config,
+        reference,
+        explicit_source=None,
+        artifact_kind="rootfs",
+        **kwargs,
+    ):
+        policy = manager.get_product_policy("ubuntu", product)
+        return ImageResolution(
+            effective=effective_from_source(source, product, policy, artifact_kind),
+            requested_reference=reference,
+            explicit_source=explicit_source,
+            aliases=("ubuntu", "24.04"),
+            architecture="amd64",
+            artifact_kinds=("rootfs", "disk"),
+        )
+
+    patcher = patch("chimera.server.engine.resolve_image_reference", side_effect=fake_resolve)
+    patcher.start()
+    try:
+        yield engine, store, image_provider, container_provider
+    finally:
+        patcher.stop()
 
 
 @pytest.mark.asyncio
@@ -105,15 +141,8 @@ async def test_creation_provisioning_drift_is_diagnosed_not_applied(lifecycle_en
     """Catalog custom-file changes after success require recreate, not live mutation."""
     engine, store, _image_provider, container_provider = lifecycle_engine
     await engine.create_container(image="ubuntu", name="demo")
-    drifted = ImageSpec(
-        name="ubuntu",
-        type="tar",
-        source="https://example.invalid/ubuntu.tar",
-        custom_files=[CustomFileSpec(path="etc/example", ensure="absent")],
-    )
-    engine.config_manager.get_image_spec.side_effect = lambda name: (
-        drifted if name == "ubuntu" else None
-    )
+    drifted = ImageProductPolicy(custom_files=[CustomFileSpec(path="etc/example", ensure="absent")])
+    engine.config_manager.get_product_policy.side_effect = lambda source_name, product_key: drifted
 
     await engine.reconcile()
 
@@ -191,3 +220,101 @@ async def test_bound_materialization_mismatch_is_not_adopted(lifecycle_engine):
         await engine.start_container("demo")
     assert container_provider.provision_count == 1
     assert store.get("demo").materialization_id == "dir:1:1"
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_clone_an_incomplete_image_cache(lifecycle_engine):
+    """Create and launch refuse an incomplete cache even when the name is already present."""
+    engine, _store, image_provider, container_provider = lifecycle_engine
+    image_provider.present = AsyncMock(
+        side_effect=ChimeraError(
+            code="image_cache_incomplete",
+            message="Image cache exists but is not a completed read-only image.",
+            status=409,
+        )
+    )
+
+    with pytest.raises(ChimeraError) as caught:
+        await engine.create_container(image="ubuntu", name="demo", start=True)
+
+    assert caught.value.code == "image_cache_incomplete"
+    assert container_provider.present_count == 0
+    assert "demo" not in container_provider.materialized
+
+
+@pytest.mark.asyncio
+async def test_disk_pull_allows_product_custom_files(lifecycle_engine):
+    """Pulling a disk image does not apply guest custom_files."""
+    engine, store, image_provider, _container_provider = lifecycle_engine
+    engine.config_manager.get_product_policy.side_effect = (
+        lambda source_name, product_key: ImageProductPolicy(
+            custom_files=[CustomFileSpec(path="etc/example", ensure="absent")]
+        )
+    )
+    result = await engine.pull_image("ubuntu", image_source="ubuntu", image_artifact="disk")
+    assert result["pulled"] is True
+    assert result["artifact_kind"] == "disk"
+    image_provider.present.assert_awaited()
+    assert store.records() == []
+
+
+@pytest.mark.asyncio
+async def test_disk_create_rejects_cloud_init_before_durable_state(lifecycle_engine):
+    """Disk plus cloud-init is rejected before a container record is stored."""
+    engine, store, _image_provider, _container_provider = lifecycle_engine
+    engine.config_manager.cloud_init_templates = {"base_minimal": {"user_data": "#cloud-config\n"}}
+    with pytest.raises(ChimeraError, match="cloud-init"):
+        await engine.create_container(
+            image="ubuntu",
+            name="demo",
+            image_artifact="disk",
+            cloud_init_template="base_minimal",
+        )
+    assert not store.contains("demo")
+
+
+@pytest.mark.asyncio
+async def test_disk_create_rejects_custom_files_before_durable_state(lifecycle_engine):
+    """Disk plus product-policy custom_files is rejected before durable mutation."""
+    engine, store, _image_provider, _container_provider = lifecycle_engine
+    engine.config_manager.get_product_policy.side_effect = (
+        lambda source_name, product_key: ImageProductPolicy(
+            custom_files=[CustomFileSpec(path="etc/example", ensure="absent")]
+        )
+    )
+    with pytest.raises(ChimeraError, match="custom_files"):
+        await engine.create_container(image="ubuntu", name="demo", image_artifact="disk")
+    assert not store.contains("demo")
+
+
+@pytest.mark.asyncio
+async def test_disk_create_allows_nspawn_parameters(lifecycle_engine):
+    """Disk containers may still receive host nspawn kernel parameters."""
+    engine, store, _image_provider, _container_provider = lifecycle_engine
+    engine.config_manager.get_product_policy.side_effect = (
+        lambda source_name, product_key: ImageProductPolicy(nspawn_parameters=["fstab=no"])
+    )
+    await engine.create_container(image="ubuntu", name="demo", image_artifact="disk")
+    assert store.contains("demo")
+    assert store.get("demo").spec.image_artifact == "disk"
+
+
+@pytest.mark.asyncio
+async def test_cloud_init_fingerprint_survives_store_round_trip(lifecycle_engine):
+    """Reloaded template-only cloud-init specs keep the original creation fingerprint."""
+    engine, store, _image_provider, _container_provider = lifecycle_engine
+    engine.config_manager.cloud_init_templates = {
+        "base_minimal": {
+            "user_data": "#cloud-config\nusers:\n  - name: chimera\n",
+            "meta_data": {"instance-id": "iid-demo"},
+        }
+    }
+    await engine.create_container(image="ubuntu", name="demo", cloud_init_template="base_minimal")
+    first = store.get("demo").provisioning_fingerprint
+    assert first
+    store.load()
+    resolved = engine._resolve_for_provisioning(store.get("demo").spec)
+    assert engine._creation_fingerprint(resolved) == first
+    await engine.reconcile()
+    assert store.get("demo").provisioning_state == "complete"
+    assert store.get("demo").last_error is None

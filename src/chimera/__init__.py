@@ -12,7 +12,6 @@ from importlib.metadata import PackageNotFoundError, version
 
 from chimera.models.config import ChimeraConfig
 from chimera.models.container import ContainerRecord, ContainerSpec
-from chimera.models.image import ImageSpec
 from chimera.models.profile import ProfileSpec
 
 
@@ -31,7 +30,6 @@ __all__ = [
     "ChimeraConfig",
     "ContainerRecord",
     "ContainerSpec",
-    "ImageSpec",
     "ProfileSpec",
     "package_version",
 ]

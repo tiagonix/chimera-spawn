@@ -62,7 +62,9 @@ Depends: python3-chimera-spawn (= ${binary:Version}),
          python3-jinja2,
          python3-ruamel.yaml,
          python3-watchfiles,
-         systemd-container
+         systemd-container,
+         gpgv,
+         ubuntu-keyring
 Recommends: libnss-mymachines
 Description: privileged Chimera Spawn server for systemd-nspawn hosts
  chimera-server is the durable lifecycle authority for managed systemd-nspawn

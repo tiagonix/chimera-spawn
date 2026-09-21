@@ -21,7 +21,11 @@ from chimera.models.container import (
     ResourceControlSpec,
     TmpfsMountSpec,
 )
-from chimera.models.image import CustomFileSpec, ImageSpec
+from chimera.models.image import (
+    CustomFileSpec,
+    ImageProductPolicy,
+    ImageSourceSpec,
+)
 from chimera.models.profile import ProfileSpec
 
 __all__ = [
@@ -33,7 +37,8 @@ __all__ = [
     "ContainerRecord",
     "ContainerSpec",
     "CustomFileSpec",
-    "ImageSpec",
+    "ImageProductPolicy",
+    "ImageSourceSpec",
     "PortForwardSpec",
     "ProfileSpec",
     "ProxyConfig",

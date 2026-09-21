@@ -133,3 +133,45 @@ compatible with the selected network configuration.
 
 Purging `chimera-spawn-server` does not delete `/var/lib/chimera-spawn/state.json`,
 managed machines, bind sources, or administrator-created TLS material.
+
+## Image fetch authority
+
+Image sources are administrator-controlled configuration. The privileged
+server may fetch only from a configured HTTPS SimpleStreams source. CLI and
+remote API clients may select a configured source name, a published image
+reference, and an artifact kind (`rootfs` or `disk`). They cannot supply an
+arbitrary source URL, artifact URL, keyring path, metadata verification
+override, SimpleStreams index, product metadata override, or SHA override.
+
+SimpleStreams source URLs must use HTTPS without embedded credentials.
+Malformed host or port syntax in configured or redirect URLs is a stable
+image-source error, not an uncaught parser exception.
+Metadata and artifact fetches remain within that configured source origin,
+including every followed redirect hop and the final response URL. Private or
+internal administrator-configured HTTPS sources are allowed; the authority
+boundary is the configured source origin, not public-Internet classification.
+SimpleStreams metadata paths must remain relative to that configured source
+base.
+
+These trust modes are not identical:
+
+- `ubuntu` (`metadata_verify: signature`): HTTPS, same-origin metadata, detached
+  GPG verification of each authoritative JSON document against the packaged
+  keyring `/usr/share/keyrings/ubuntu-cloudimage-keyring.gpg`, then SHA-256
+  (and optional advertised size) of the downloaded artifact. Signed sources
+  never fall back to unsigned metadata.
+- `images` (`metadata_verify: tls`): HTTPS, same-origin metadata, then SHA-256
+  (and optional advertised size) of the downloaded artifact. This is not
+  cryptographic publisher-signature verification. The `images` remote hosts
+  unofficial convenience/test images, not official artifacts from each included
+  distribution.
+
+Artifacts are streamed to a private temporary file and checked against the
+advertised SHA-256 (and size, when present) before systemd import. A digest or
+size mismatch deletes the temporary material and does not call systemd import.
+The `products:` section in local image configuration can provide
+`custom_files` and `nspawn_parameters`. SimpleStreams metadata cannot supply
+or override those fields. Local images generated in the reserved
+`chimera-src-` remote-cache namespace are Chimera-owned base-image cache
+objects, not unmanaged host resources. Only the exact generated digest shape is
+classified as an owned cache object.

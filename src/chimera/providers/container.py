@@ -17,9 +17,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from chimera.errors import ChimeraError
+from chimera.images.identity import is_generated_image_cache_name
 from chimera.models.container import ContainerSpec
 from chimera.providers.base import BaseProvider, ProviderStatus
-from chimera.utils.fs import classify_materialization_path, identity_for
+from chimera.utils.fs import (
+    classify_materialization_path,
+    identity_for,
+    normalize_nspawn_machine_id,
+)
 from chimera.utils.rendering import (
     image_nspawn_parameters,
     render_nspawn_config,
@@ -113,10 +118,24 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
         if current_status != ProviderStatus.ABSENT:
             raise self._observation_failure(spec.name)
 
+        if spec._effective_image is None:
+            raise ChimeraError(
+                code="invalid_configuration",
+                message=f"Container '{spec.name}' has no resolved image for clone.",
+                suggestion="Inspect the container image source, then retry.",
+                status=422,
+            )
         logger.info("Creating container %s", spec.name)
         try:
-            await run_command(["machinectl", "clone", spec.image, spec.name], timeout=600)
-            logger.debug("Cloned image %s to container %s", spec.image, spec.name)
+            await run_command(
+                ["machinectl", "clone", spec._effective_image.local_image_name, spec.name],
+                timeout=600,
+            )
+            logger.debug(
+                "Cloned image %s to container %s",
+                spec._effective_image.local_image_name,
+                spec.name,
+            )
         except subprocess.CalledProcessError as error:
             logger.error("Failed to clone image: %s. Stderr: %s", error, error.stderr)
             raise
@@ -193,22 +212,14 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
     async def validate_spec(self, spec: ContainerSpec) -> bool:
         """Validate container specification."""
         # Check that referenced image exists
-        if spec._image_spec is None:
-            logger.error(f"Image {spec.image} not found in configuration")
+        if spec._effective_image is None:
+            logger.error("Image %s not found in configuration", spec.image)
             return False
 
         # Check that referenced profile exists
         if spec._profile_spec is None:
-            logger.error(f"Profile {spec.profile} not found in configuration")
+            logger.error("Profile %s not found in configuration", spec.profile)
             return False
-
-        if spec._image_spec.type == "raw" and spec.cloud_init:
-            raise ChimeraError(
-                code="unsupported_provisioning",
-                message=f"Raw image '{spec.image}' does not support cloud-init provisioning.",
-                suggestion="Choose a root-filesystem tar image or launch the raw image without --cloud-init.",
-                status=422,
-            )
 
         return True
 
@@ -283,11 +294,8 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
                 names.add(name)
         return names
 
-    async def list_unmanaged_host_resources(
-        self, managed_names: set[str], catalog_image_names: set[str] | None = None
-    ) -> dict[str, list[str]]:
+    async def list_unmanaged_host_resources(self, managed_names: set[str]) -> dict[str, list[str]]:
         """Inventory same-domain host artifacts that Chimera does not own."""
-        catalog_image_names = catalog_image_names or set()
         machines_dir, nspawn_dir, system_dir = self._require_paths()
         machines = await self.list_unmanaged_machine_names(managed_names)
         storage_entries, storage_error = await asyncio.to_thread(
@@ -299,20 +307,20 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
         systemd_overrides, override_error = await asyncio.to_thread(
             self._list_unmanaged_override_names, system_dir, managed_names
         )
-        catalog_hits: list[str] = []
+        image_caches: list[str] = []
         unmanaged_storage: list[str] = []
         for entry in storage_entries:
             name = entry[:-4] if entry.endswith(".raw") else entry
-            if name in catalog_image_names:
-                catalog_hits.append(entry)
+            if is_generated_image_cache_name(name):
+                image_caches.append(entry)
             else:
                 unmanaged_storage.append(entry)
         result: dict[str, list[str]] = {
-            "machines": [name for name in machines if name not in catalog_image_names],
+            "machines": [name for name in machines if not is_generated_image_cache_name(name)],
             "storage_entries": unmanaged_storage,
             "nspawn_configs": nspawn_configs,
             "systemd_overrides": systemd_overrides,
-            "catalog_images": catalog_hits,
+            "image_caches": image_caches,
         }
         errors = [item for item in (storage_error, nspawn_error, override_error) if item]
         if errors:
@@ -467,28 +475,23 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
                     code="provisioning_failed",
                     message=f"Could not apply custom file '{file_spec.path}' to '{container_name}'.",
                     detail=str(error),
-                    suggestion="Inspect the container filesystem and correct the image catalog entry.",
+                    suggestion="Inspect the container filesystem and correct the product policy.",
                     status=502,
                 ) from error
 
     async def _provision_rootfs(self, spec: ContainerSpec) -> None:
-        """Apply creation-time root-filesystem provisioning for a tar image."""
-        image = spec._image_spec
+        """Apply creation-time root-filesystem provisioning for a directory image."""
+        image = spec._effective_image
         if image is None:
             raise ChimeraError(
                 code="invalid_configuration",
-                message=f"Image '{spec.image}' is not in the Chimera catalog.",
+                message=f"Image '{spec.image}' is not available from source '{spec.image_source}'.",
                 status=422,
             )
-        if image.type == "raw":
-            if image.custom_files or spec.cloud_init:
-                raise ChimeraError(
-                    code="unsupported_provisioning",
-                    message=f"Raw image '{image.name}' cannot be modified by this release.",
-                    suggestion="Use a root-filesystem tar image without raw-image provisioning.",
-                    status=422,
-                )
+        if image.artifact_kind == "disk":
             return
+        machines_dir, _, _ = self._require_paths()
+        await asyncio.to_thread(normalize_nspawn_machine_id, machines_dir / spec.name)
         if image.custom_files:
             try:
                 await self._apply_custom_files(spec.name, image.custom_files)
@@ -499,7 +502,7 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
                     code="provisioning_failed",
                     message=f"Could not apply custom file provisioning to '{spec.name}'.",
                     detail=str(error),
-                    suggestion="Inspect the container filesystem and correct the image catalog entry.",
+                    suggestion="Inspect the container filesystem and correct the product policy.",
                     status=502,
                 ) from error
         if spec.cloud_init:
@@ -530,7 +533,7 @@ class ContainerProvider(BaseProvider[ContainerSpec]):
             profile,
             spec.name,
             self.proxy_config,
-            image_nspawn_parameters(spec._image_spec),
+            image_nspawn_parameters(spec._effective_image),
             spec.bind_mounts,
             spec.tmpfs_mounts,
             spec.port_forwards,

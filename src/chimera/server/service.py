@@ -23,10 +23,11 @@ from chimera.models.container import (
     ResourceControlSpec,
     TmpfsMountSpec,
 )
+from chimera.models.image import ArtifactKind, DEFAULT_ARTIFACT_KIND
 from chimera.pydantic_compat import model_validate
 from chimera.runtime import RuntimePaths
 
-READ_COMMANDS = {"status", "list", "validate", "doctor"}
+READ_COMMANDS = {"status", "list", "validate", "doctor", "image_info"}
 PRIVILEGED_COMMANDS = {
     "create",
     "launch",
@@ -144,8 +145,18 @@ class CommandService:
             return {"reloaded": True}
         if command == "image_pull":
             name = self._required_string(values, "name", "Image name")
-            await self.state_engine.pull_image(name)
-            return {"image": name, "pulled": True}
+            image_source = self._optional_source(values)
+            image_artifact = self._optional_artifact(values)
+            return await self.state_engine.pull_image(
+                name, image_source=image_source, image_artifact=image_artifact
+            )
+        if command == "image_info":
+            name = self._required_string(values, "name", "Image name")
+            image_source = self._optional_source(values)
+            image_artifact = self._optional_artifact(values)
+            return await self.state_engine.describe_image(
+                name, image_source=image_source, image_artifact=image_artifact
+            )
         if command == "validate":
             return await self.state_engine.validate_configuration()
         if command == "import_records":
@@ -213,26 +224,30 @@ class CommandService:
         }
 
     async def _list(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Return one or all static/durable resource collections."""
+        """Return one or all durable resource collections."""
         resource_type = args.get("type", "all")
-        if resource_type not in {"all", "images", "containers", "profiles"}:
+        if resource_type not in {"all", "images", "image_sources", "containers", "profiles"}:
             raise ChimeraError(
                 code="invalid_argument",
                 message=f"Unknown resource type '{resource_type}'.",
-                suggestion="Use images, containers, profiles, or all.",
+                suggestion="Use image_sources, containers, profiles, or all.",
                 status=400,
             )
         result: dict[str, Any] = {}
-        if resource_type in {"all", "images"}:
-            result["images"] = {
-                name: {
-                    "name": name,
-                    "type": spec.type,
-                    "source": spec.source,
-                    "verify": spec.verify,
-                }
-                for name, spec in self.config_manager.images.items()
-            }
+        image_source = args.get("image_source")
+        if resource_type == "images":
+            if not isinstance(image_source, str) or not image_source:
+                raise ChimeraError(
+                    code="invalid_argument",
+                    message="Listing images requires a configured SimpleStreams source.",
+                    suggestion="Run 'chimeractl image source list' then 'chimeractl image list --source SOURCE'.",
+                    status=400,
+                )
+            result["image_source"] = image_source
+            rows = await self.state_engine.list_source_images(image_source)
+            result["images"] = {row["product"]: row for row in rows}
+        if resource_type in {"all", "image_sources"}:
+            result["image_sources"] = self.config_manager.list_image_sources()
         if resource_type in {"all", "containers"}:
             result["containers"] = await self.state_engine.get_all_container_statuses()
         if resource_type in {"all", "profiles"}:
@@ -251,6 +266,8 @@ class CommandService:
         """Create or launch a new durable container record."""
         image = self._required_string(args, "image", "Image")
         name = self._required_string(args, "name", "Container name")
+        image_source = self._optional_source(args)
+        image_artifact = self._optional_artifact(args)
         profile = args.get("profile", "standard")
         cloud_init = args.get("cloud_init")
         if not isinstance(profile, str) or not profile:
@@ -298,10 +315,14 @@ class CommandService:
             port_forwards=port_forwards,
             resource_controls=resource_controls,
             start=start,
+            image_source=image_source,
+            image_artifact=image_artifact,
         )
         return {
             "name": record.name,
             "image": record.spec.image,
+            "image_source": record.spec.image_source,
+            "image_artifact": record.spec.image_artifact,
             "desired_state": record.desired_state,
         }
 
@@ -439,3 +460,35 @@ class CommandService:
                 status=400,
             )
         return value
+
+    @staticmethod
+    def _optional_source(args: dict[str, Any]) -> str | None:
+        """Accept a configured source name, never a URL or protocol."""
+        value = args.get("image_source")
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value:
+            raise ChimeraError(
+                code="invalid_argument",
+                message="image_source must be a configured image source name.",
+                suggestion="Run 'chimeractl image source list' and pass --source NAME.",
+                status=400,
+            )
+        return value
+
+    @staticmethod
+    def _optional_artifact(args: dict[str, Any]) -> ArtifactKind:
+        """Accept rootfs or disk; default to directory materialization."""
+        value = args.get("image_artifact")
+        if value is None:
+            return DEFAULT_ARTIFACT_KIND
+        if value == "rootfs":
+            return "rootfs"
+        if value == "disk":
+            return "disk"
+        raise ChimeraError(
+            code="invalid_argument",
+            message="image_artifact must be 'rootfs' or 'disk'.",
+            suggestion="Pass --artifact rootfs or --artifact disk.",
+            status=400,
+        )

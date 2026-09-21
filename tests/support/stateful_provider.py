@@ -33,7 +33,7 @@ class StatefulContainerProvider:
             raise RuntimeError(f"{step} failed")
 
     async def validate_spec(self, spec: Any) -> bool:
-        return spec._image_spec is not None and spec._profile_spec is not None
+        return spec._effective_image is not None and spec._profile_spec is not None
 
     async def preflight_create(self, spec: Any) -> None:
         if self.inventory_error:
@@ -131,15 +131,13 @@ class StatefulContainerProvider:
     async def _disable_service(self, name: str) -> None:
         return None
 
-    async def list_unmanaged_host_resources(
-        self, managed_names: set[str], catalog_image_names: set[str] | None = None
-    ) -> dict[str, list[str]]:
+    async def list_unmanaged_host_resources(self, managed_names: set[str]) -> dict[str, list[str]]:
         return {
             "machines": [],
             "storage_entries": [],
             "nspawn_configs": [],
             "systemd_overrides": [],
-            "catalog_images": [],
+            "image_caches": [],
         }
 
     def disappear(self, name: str) -> None:
